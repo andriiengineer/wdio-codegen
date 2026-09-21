@@ -1,0 +1,62 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  # The recorder bundle (src/recorder.content.js) and the UI bundle (ui/) are committed build
+  # artifacts that ship in the tarball. Nothing else notices when they drift out of sync with
+  # their sources, so rebuild them here and fail if the result differs from what was committed.
+  build-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Rebuild committed artifacts
+        run: |
+          npm run build
+          npm run build:ui
+
+      # --porcelain, not `git diff`: a Vite rebuild renames the hashed bundle, so the stale file
+      # shows up as deleted and the fresh one as untracked. `git diff` alone would miss the latter.
+      - name: Fail if the rebuild differs from what is committed
+        run: |
+          changed=$(git status --porcelain -- src/recorder.content.js ui/)
+          if [ -n "$changed" ]; then
+            echo "::error::Committed build artifacts are stale. Run 'npm run build && npm run build:ui' and commit the result."
+            echo "$changed"
+            git diff -- src/recorder.content.js ui/ | head -100
+            exit 1
+          fi

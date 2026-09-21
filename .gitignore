@@ -1,0 +1,29 @@
+node_modules/
+.wdio-codegen-session/
+test/snapshots/*.actual.js
+.DS_Store
+docs/superpowers/
+docs/audit-*.md
+docs
+.claude/
+.superpowers/
+
+# logs
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# local env
+.env
+.env.local
+.env.*.local
+
+# test coverage
+coverage/
+
+# typescript incremental cache
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>wdio-codegen fixture</title></head>
+<body>
+
+  <!-- P1: data-testid / data-test / data-cy / data-pw / test-id
+       Most stable: explicit test hook added by developers.
+       Engine: [data-testid="login-btn"] -->
+  <button data-testid="login-btn">Login</button>
+  <input data-cy="search-input" type="text">
+
+  <!-- P2: unique #id
+       CSS-native, fast. Skipped when id is framework-generated (mui-*, radix-:r0:, etc.)
+       Engine: #email-input -->
+  <input id="email-input" type="text" placeholder="Email">
+
+  <!-- P3a: placeholder attribute (form inputs)
+       Engine: input[placeholder="Enter your name"] -->
+  <input type="text" placeholder="Enter your name">
+
+  <!-- P3b: img[alt]
+       Engine: img[alt="Company logo"] -->
+  <img src="logo.png" alt="Company logo">
+
+  <!-- P3c: name attribute; radio combines name + value
+       Engine: input[name="username"] / input[name="size"][value="large"] -->
+  <input name="username" type="text">
+  <label><input name="size" type="radio" value="large"> Large</label>
+  <label><input name="size" type="radio" value="small"> Small</label>
+
+  <!-- P3d: href anchor (same-origin, path only, search/hash stripped)
+       Engine: a[href="/dashboard"] -->
+  <a href="/dashboard">Dashboard</a>
+
+  <!-- P4: WDIO text= selector (interactive / semantic tags, stable visible text)
+       "Best. Resembles how the user interacts with the page." (webdriver.io/docs/selectors/)
+       Engine: button=Submit  /  a=Home  /  h2=Welcome -->
+  <button>Submit</button>
+  <a href="#">Home</a>
+  <h2>Welcome</h2>
+
+  <!-- P5: aria/ selector (no testid / id / semantic attrs present)
+       Note: if id is also set, P2 (#id) wins, so remove id to demonstrate P5.
+       Engine: aria/Email address -->
+  <input aria-label="Email address" type="text">
+
+  <!-- P5 via aria-labelledby (multiple IDs resolved and joined)
+       Engine: aria/First name Last name -->
+  <span id="lbl-first">First name</span>
+  <span id="lbl-last">Last name</span>
+  <input aria-labelledby="lbl-first lbl-last" type="text">
+
+  <!-- P6: role attribute alone: warn, not unique without context
+       Engine: [role="dialog"]  (warn: true) -->
+  <div role="dialog" style="display:none">Dialog content</div>
+
+  <!-- P7: type attribute: warn, potentially non-unique
+       Engine: button[type="submit"]  (warn: true) -->
+  <button type="submit">Go</button>
+
+  <!-- P8: CSS/XPath fallback: last resort, warn
+       Engine: positional CSS path  (warn: true) -->
+  <span>Dynamic content</span>
+
+  <!-- select: uses selectByAttribute('value',…) for semantic values,
+       selectByVisibleText(…) for numeric / empty values -->
+  <select id="country">
+    <option value="ua">Ukraine</option>
+    <option value="us">USA</option>
+  </select>
+
+  <!-- Shadow DOM: WDIO v9+ auto-pierces shadow boundaries, no >>> needed.
+       Standard selectors work as-is inside shadow roots. -->
+  <div id="shadow-host"></div>
+  <script>
+    const host = document.getElementById('shadow-host');
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = '<button data-testid="shadow-btn">Shadow Button</button>';
+  </script>
+
+</body>
+</html>

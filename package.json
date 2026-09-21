@@ -1,0 +1,69 @@
+{
+  "name": "wdio-codegen",
+  "version": "1.0.0",
+  "description": "Record browser interactions and generate WebdriverIO test scripts",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "keywords": [
+    "webdriverio",
+    "wdio",
+    "codegen",
+    "test",
+    "recorder",
+    "automation",
+    "e2e"
+  ],
+  "author": "Andrii Samoilenko",
+  "license": "MIT",
+  "homepage": "https://github.com/andriiengineer/wdio-codegen#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/andriiengineer/wdio-codegen.git"
+  },
+  "bugs": {
+    "url": "https://github.com/andriiengineer/wdio-codegen/issues"
+  },
+  "bin": {
+    "wdio-codegen": "./bin/wdio-codegen.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "ui/",
+    "THIRD-PARTY-NOTICES.md",
+    "SECURITY.md"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "esbuild src/recorder.source.js --bundle --format=esm --outfile=src/recorder.content.js",
+    "build:ui": "vite build",
+    "dev:ui": "vite",
+    "prepublishOnly": "npm run build && npm run build:ui && npm test"
+  },
+  "dependencies": {
+    "puppeteer-core": "^24.43.1",
+    "webdriverio": "^9.0.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@codemirror/lang-javascript": "^6",
+    "@codemirror/state": "^6",
+    "@codemirror/view": "^6",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@uiw/react-codemirror": "^4",
+    "@vitejs/plugin-react": "^4",
+    "@wdio/cli": "^9.0.0",
+    "@wdio/local-runner": "^9.0.0",
+    "@wdio/mocha-framework": "^9.0.0",
+    "esbuild": "^0.28.0",
+    "react": "^18",
+    "react-dom": "^18",
+    "typescript": "^5",
+    "vite": "^5",
+    "vitest": "^1.6.0"
+  }
+}

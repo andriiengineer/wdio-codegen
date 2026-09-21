@@ -1,0 +1,109 @@
+.sidebar {
+  width: 100%;
+  height: 180px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid #e0e0e0;
+  background: #fafafa;
+  overflow: hidden;
+}
+
+.sidebar-tabs {
+  display: flex;
+  background: #f0f0f0;
+  border-bottom: 1px solid #e0e0e0;
+  flex-shrink: 0;
+}
+
+.sidebar-tab {
+  padding: 4px 14px;
+  text-align: center;
+  font-size: 11px;
+  color: #888;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  transition: color 0.1s;
+}
+
+.sidebar-tab:hover { color: #333; }
+.sidebar-tab.active { color: #333; border-bottom-color: #2196f3; }
+
+.sidebar-body {
+  flex: 1;
+  padding: 8px 12px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.sidebar-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #999;
+  margin-bottom: 4px;
+}
+
+.locator-input {
+  width: 100%;
+  max-width: 600px;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: Consolas, monospace;
+  color: #1a6fb5;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.locator-input:focus { border-color: #2196f3; box-shadow: 0 0 0 2px #2196f322; }
+
+.log-filter-chips {
+  display: flex;
+  gap: 4px;
+  margin: 6px 0;
+}
+
+.log-chip {
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #888;
+  cursor: pointer;
+}
+
+.log-chip:hover { color: #333; border-color: #999; }
+.log-chip.active { color: #fff; background: #2196f3; border-color: #2196f3; }
+
+.log-list { display: flex; flex-direction: column; gap: 1px; }
+.log-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 3px 0;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 11px;
+  color: #444;
+  line-height: 1.5;
+}
+.log-entry.assert { color: #7c3aed; }
+.log-entry.warn { color: #c05c00; }
+
+.log-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+.log-dot.action { background: #4caf50; }
+.log-dot.assert { background: #9b59b6; }
+.log-dot.warn { background: #ff9800; }
