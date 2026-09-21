@@ -1,6 +1,6 @@
 {
   "name": "wdio-codegen",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Record browser interactions and generate WebdriverIO test scripts",
   "type": "module",
   "engines": {
