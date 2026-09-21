@@ -112,6 +112,8 @@ Locators are chosen in priority order:
 ```bash
 # Basic recording
 npx wdio-codegen https://example.com
+npx wdio-codegen example.com
+npx wdio-codegen localhost:3000
 
 # Save generated test to a file
 npx wdio-codegen https://example.com --output test/specs/my-test.js

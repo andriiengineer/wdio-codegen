@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from '../src/server.js';
 import { createLauncher } from '../src/launcher.js';
 import { createFileWriter } from '../src/file-writer.js';
+import { normalizeUrl } from '../src/normalize-url.js';
 import net from 'node:net';
 import cp from 'node:child_process';
 import { findChromeBin, getScreenSize, openCodeWindow, setCodeWindowDockIcon } from './chrome-setup.js';
@@ -52,7 +53,7 @@ if (values.help || positionals.length === 0) {
 Usage: npx wdio-codegen [options] <url>
 
 Arguments:
-  url                    URL to open in the browser
+  url                    URL to open in the browser (https:// assumed when omitted)
 
 Options:
   -o, --output <file>              Save generated code to file (updated live)
@@ -75,7 +76,8 @@ Options:
   process.exit(0);
 }
 
-const targetUrl = positionals[0];
+const rawUrl = positionals[0];
+const targetUrl = normalizeUrl(rawUrl);
 
 if (values.browser && values.browser !== 'chrome') {
   console.error(`[wdio-codegen] Error: --browser "${values.browser}" is not supported. Only 'chrome' works (recording uses Puppeteer CDP).`);
@@ -90,7 +92,7 @@ try {
     throw new Error('protocol must be http or https');
   }
 } catch (err) {
-  console.error(`[wdio-codegen] Error: invalid URL "${targetUrl}": ${err.message}`);
+  console.error(`[wdio-codegen] Error: invalid URL "${rawUrl}": ${err.message}`);
   process.exit(1);
 }
 
