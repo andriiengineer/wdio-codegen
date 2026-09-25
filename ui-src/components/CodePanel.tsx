@@ -47,15 +47,12 @@ function makeAssertPlugin(assertLineNums: Set<number>, warnLineNums: Set<number>
 interface Props {
   lines: LineEntry[];
   lang: 'js' | 'ts';
-  onLocatorEdit?: (locator: string) => void;
 }
 
-export function CodePanel({ lines, lang, onLocatorEdit }: Props) {
+export function CodePanel({ lines, lang }: Props) {
   const code = useMemo(() => buildCode(lines, lang), [lines, lang]);
 
-  // Header lines before recorded lines: dynamic: 4 normally, 5 when Key import is added.
-  // countHeaderLines() mirrors the logic in buildCode() to stay in sync.
-  const HEADER_LINES = countHeaderLines(lines);
+  const HEADER_LINES = countHeaderLines(lines, lang);
   const { assertSet, warnSet } = useMemo(() => {
     const assertSet = new Set<number>();
     const warnSet = new Set<number>();
@@ -65,7 +62,7 @@ export function CodePanel({ lines, lang, onLocatorEdit }: Props) {
       else if (l.warn) warnSet.add(lineNum);
     });
     return { assertSet, warnSet };
-  }, [lines]);
+  }, [lines, lang]);
 
   const extensions = useMemo(
     () => [javascript({ typescript: lang === 'ts' }), lightTheme, makeAssertPlugin(assertSet, warnSet)],
@@ -81,22 +78,14 @@ export function CodePanel({ lines, lang, onLocatorEdit }: Props) {
     view.dispatch({ effects: EditorView.scrollIntoView(view.state.doc.length, { y: 'end' }) });
   }, [lines.length]);
 
-  function handleChange(value: string) {
-    if (!onLocatorEdit) return;
-    // Extract the locator from the line being edited (pattern: $('locator'))
-    const match = value.match(/\$\('([^'\\]+)'\)/);
-    if (match) onLocatorEdit(match[1]);
-  }
-
   return (
     <CodeMirror
       value={code}
       extensions={extensions}
-      editable={true}
+      editable={false}
       basicSetup={{ lineNumbers: true, highlightActiveLine: false }}
       style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
       onCreateEditor={(view) => { viewRef.current = view; }}
-      onChange={handleChange}
     />
   );
 }

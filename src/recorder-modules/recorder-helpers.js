@@ -1,8 +1,7 @@
 // src/recorder-modules/recorder-helpers.js
 // Stateless helper functions used by recorder.source.js.
 // These functions run in the browser context (bundled by esbuild into recorder.content.js).
-import { getBestLocator } from '../locator-engine.js';
-import { buildFallbackSelector, extractInfo } from './recorder-locator.js';
+import { extractInfo, getUniqueLocator } from './recorder-locator.js';
 
 // Auto-detect frame selector (for iframes injected by Puppeteer addInitScript).
 // Priority: #id > iframe[name] > iframe[src] > iframe:nth-of-type (last resort).
@@ -60,14 +59,7 @@ export function resolveTextAssertLocator(el, locator, warn, text) {
   if (textSelMatch && textSelMatch[2] === text) {
     const infoNoText = extractInfo(el);
     infoNoText.text = '';
-    const reExtracted = getBestLocator(infoNoText);
-    let assertLocator = reExtracted.locator;
-    let assertWarn = reExtracted.warn;
-    if (assertLocator.match(/^\w+=.+$/)) {
-      assertLocator = buildFallbackSelector(el);
-      assertWarn = true;
-    }
-    return { locator: assertLocator, warn: assertWarn };
+    return getUniqueLocator(el, infoNoText);
   }
   return { locator, warn };
 }

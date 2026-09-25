@@ -1,9 +1,7 @@
-// test/unit/features-ux-p3.test.js
-// P3 UX features:
+// test/unit/right-click-new-tab.test.js
+// Recorded actions:
 // 1. rightClick recording (context menu + codegen)
 // 2. openPage / switchWindow (new tab → browser.switchWindow())
-// 3. --viewport-size CLI flag
-// 4. --device CLI flag + device profiles
 import { describe, it, expect } from 'vitest';
 import { generateLine, getHumanLabel } from '../../src/codegen.js';
 import fs from 'node:fs';
@@ -16,12 +14,6 @@ const RECORDER_SRC = fs.readFileSync(
 );
 const LAUNCHER_SRC = fs.readFileSync(
   path.join(__dirname, '../../src/launcher.js'), 'utf8'
-);
-const VIEWPORT_SRC = fs.existsSync(path.join(__dirname, '../../src/launcher/viewport.js'))
-  ? fs.readFileSync(path.join(__dirname, '../../src/launcher/viewport.js'), 'utf8')
-  : '';
-const CLI_SRC = fs.readFileSync(
-  path.join(__dirname, '../../bin/wdio-codegen.js'), 'utf8'
 );
 
 // ── 1. rightClick ────────────────────────────────────────────────────────────
@@ -89,69 +81,5 @@ describe('openPage: launcher emits event on new tab', () => {
     expect(setupIdx).toBeGreaterThan(-1);
     expect(openPageIdx).toBeGreaterThan(-1);
     expect(openPageIdx).toBeGreaterThan(setupIdx);
-  });
-});
-
-// ── 3. --viewport-size CLI flag ───────────────────────────────────────────────
-describe('--viewport-size CLI flag', () => {
-  it('bin/wdio-codegen.js has viewport-size option', () => {
-    expect(CLI_SRC).toMatch(/['"]viewport-size['"]/);
-  });
-
-  it('launcher.js accepts viewportSize parameter', () => {
-    expect(LAUNCHER_SRC).toMatch(/viewportSize/);
-  });
-
-  it('launcher applies viewport via Puppeteer page.setViewport when viewportSize provided', () => {
-    expect(LAUNCHER_SRC + VIEWPORT_SRC).toMatch(/setViewport/);
-  });
-
-  it('viewport-size format WxH is parsed to width and height', () => {
-    // The CLI or launcher must parse "1280x720" → { width: 1280, height: 720 }
-    expect(LAUNCHER_SRC).toMatch(/split.*x|width.*height|(\d+).*x.*(\d+)/i);
-  });
-
-  it('help text mentions --viewport-size', () => {
-    expect(CLI_SRC).toMatch(/viewport-size/);
-  });
-});
-
-// ── 4. --device CLI flag ──────────────────────────────────────────────────────
-describe('--device CLI flag', () => {
-  it('bin/wdio-codegen.js has device option', () => {
-    expect(CLI_SRC).toMatch(/['"]device['"]/);
-  });
-
-  it('launcher.js accepts device parameter', () => {
-    expect(LAUNCHER_SRC).toMatch(/device/i);
-  });
-
-  it('launcher has DEVICES map with iPhone profile', () => {
-    expect(LAUNCHER_SRC + VIEWPORT_SRC).toMatch(/iPhone/i);
-  });
-
-  it('launcher has DEVICES map with iPad profile', () => {
-    expect(LAUNCHER_SRC + VIEWPORT_SRC).toMatch(/iPad/i);
-  });
-
-  it('launcher has DEVICES map with Pixel profile', () => {
-    expect(LAUNCHER_SRC + VIEWPORT_SRC).toMatch(/Pixel/i);
-  });
-
-  it('device profile includes width, height fields', () => {
-    expect(LAUNCHER_SRC).toMatch(/width.*height|height.*width/);
-  });
-
-  it('device profile includes userAgent field', () => {
-    expect(LAUNCHER_SRC).toMatch(/userAgent/);
-  });
-
-  it('launcher applies device emulation via setViewport + setUserAgent', () => {
-    expect(LAUNCHER_SRC + VIEWPORT_SRC).toMatch(/setViewport/);
-    expect(LAUNCHER_SRC + VIEWPORT_SRC).toMatch(/setUserAgent/);
-  });
-
-  it('help text mentions --device', () => {
-    expect(CLI_SRC).toMatch(/--device/);
   });
 });

@@ -11,6 +11,59 @@ export const DYNAMIC_TEXT_RE = /^[\d\s$€£¥,.%+\-()\/:]+$|(\d{4}[-\/]\d{2}[-\
 // selector quality; a falsely rejected semantic ID blocks locator generation entirely.
 const GENERATED_ID_PREFIX_RE = /^(mui-|radix-|headlessui-|react-select-|floating-ui-|popper-|rc-|ant-|el-|ember|__next-|__relay-)/i;
 
+/** Escapes a value for a double-quoted CSS attribute selector `[attr="…"]`. */
+export function cssAttr(value) {
+  return String(value)
+    .replace(/["\\]/g, '\\$&')
+    .replace(/[\n\r\f]/g, (c) => `\\${c.charCodeAt(0).toString(16)} `);
+}
+
+function idSelector(id) {
+  return /^-?[A-Za-z_][\w-]*$/.test(id) ? `#${id}` : `[id="${cssAttr(id)}"]`;
+}
+
+/** WebdriverIO treats a selector ending in an image extension as an image-file selector. */
+export function isWdioImageSelector(selector) {
+  return /\.(jpe?g|gif|png|bmp|svg)$/i.test(selector);
+}
+
+// aria/ and tag=text go into an XPath string literal, which cannot escape `"`.
+function isWdioSafeValue(value) {
+  return !value.includes('"') && !isWdioImageSelector(value);
+}
+
+/** The XPath WebdriverIO 9 builds for `aria/…` and `tag=text` (findStrategy); null for CSS. */
+export function toWdioXPath(locator) {
+  return wdioXPathBranches(locator)?.join(' | ') ?? null;
+}
+
+export function wdioXPathBranches(locator) {
+  if (locator.startsWith('aria/')) {
+    const l = locator.slice('aria/'.length);
+    return [
+      `.//*[@aria-labelledby=(//*[normalize-space(text()) = "${l}"]/@id)]`,
+      `.//*[@aria-describedby=(//*[normalize-space(text()) = "${l}"]/@id)]`,
+      `.//*[@aria-label = "${l}"]`,
+      `.//input[@id = (//label[normalize-space() = "${l}"]/@for)]`,
+      `.//textarea[@id = (//label[normalize-space() = "${l}"]/@for)]`,
+      `.//input[ancestor::label[normalize-space(text()) = "${l}"]]`,
+      `.//textarea[ancestor::label[normalize-space(text()) = "${l}"]]`,
+      `.//input[@placeholder="${l}"]`,
+      `.//textarea[@placeholder="${l}"]`,
+      `.//input[@aria-placeholder="${l}"]`,
+      `.//textarea[@aria-placeholder="${l}"]`,
+      `.//*[not(self::label)][@title="${l}"]`,
+      `.//img[@alt="${l}"]`,
+      `.//*[not(self::label)][normalize-space(text()) = "${l}"]`,
+    ];
+  }
+  const m = locator.match(/^(\w+)=(.+)$/);
+  if (!m) return null;
+  const [, tag, text] = m;
+  const own = `.//${tag}[normalize-space(text()) = "${text}"]`;
+  return [own, `.//${tag}[not(${own}) and normalize-space() = "${text}"]`];
+}
+
 /**
  * Returns true when an element ID is framework-generated and therefore unstable
  * across renders (counter changes, random hash, Radix colon-style, etc.).
@@ -32,14 +85,18 @@ export function isGeneratedId(id) {
   return false;
 }
 
+
 /**
+ * Returns ALL viable locator candidates for an element, ordered by priority (best first).
+ * Each candidate: { locator, warn, label }.
+ *
  * Selector priority (aligns with WebdriverIO-native philosophy):
  *
  *  P1: data-testid / data-test / data-cy / data-pw / test-id  (explicit test hooks)
  *  P2: unique stable #id                                       (CSS-native, fast)
  *  P3: aria/ selector                                          (explicit accessibility label, stable and descriptive)
- *  P4: stable semantic attributes                              (placeholder, img[alt], name)
- *         Note: P4b uses CSS attribute syntax [name="…"], NOT the deprecated WebDriver
+ *  P4: stable semantic attributes                              (placeholder, img[alt], name, submit value)
+ *         Note: P4c uses CSS attribute syntax [name="…"], NOT the deprecated WebDriver
  *         byName strategy. CSS attribute selectors are fully supported in WDIO v9+.
  *  P5: WDIO text selectors                                     (button=Save, a=Checkout)
  *  P6: role alone (warn: not unique without additional context)
@@ -50,106 +107,6 @@ export function isGeneratedId(id) {
  * References:
  *   https://webdriver.io/docs/selectors/
  *   https://webdriver.io/docs/bestpractices/
- *
- * Note: Shadow DOM is NOT handled here. WebdriverIO v9+ automatically pierces
- * Shadow DOM boundaries: no >>> syntax needed. Standard selectors work as-is.
- *
- * @param {{ tag: string, text: string, ariaLabel: string, id: string,
- *           idUnique: boolean, attrs: Record<string,string>, xpath: string }} info
- * @returns {{ locator: string, warn: boolean }}
- */
-export function getBestLocator(info, testIdAttrs = TEST_ID_ATTRS) {
-  const { tag, text, ariaLabel, id, idUnique, attrs = {}, xpath } = info;
-
-  let locator, warn;
-  let found = false;
-
-  // ── P1: test-id attributes (explicit test hooks, most stable) ────────────
-  for (const attr of testIdAttrs) {
-    if (attrs[attr]) { locator = `[${attr}="${attrs[attr]}"]`; warn = false; found = true; break; }
-  }
-
-  // ── P2: unique #id (CSS-native, fast, browser-native) ───────────────────
-  // Skip IDs that are framework-generated (counter-based, colon-style, known prefixes).
-  if (!found && id && idUnique && !isGeneratedId(id)) {
-    locator = `#${id}`; warn = false; found = true;
-  }
-
-  // ── P3: aria/ selector (explicit accessibility label, stable and descriptive) ──
-  if (!found && ariaLabel) {
-    locator = `aria/${ariaLabel}`; warn = false; found = true;
-  }
-
-  // ── P4: stable semantic attributes ──────────────────────────────────────
-
-  // P4a: placeholder (distinctive label for form inputs)
-  if (!found && attrs.placeholder) {
-    locator = `${tag}[placeholder="${attrs.placeholder}"]`; warn = false; found = true;
-  }
-
-  // P4b: img[alt] for images
-  if (!found && tag === 'img' && attrs.alt) {
-    locator = `img[alt="${attrs.alt}"]`; warn = false; found = true;
-  }
-
-  // P4c: name attribute as a CSS attribute selector, e.g. `input[name="email"]`
-  // (not the deprecated WebDriver `byName` strategy). Radio buttons combine
-  // name+value to pin down the specific option.
-  if (!found && attrs.name) {
-    if (tag === 'input' && attrs.type === 'radio' && attrs.value) {
-      locator = `input[name="${attrs.name}"][value="${attrs.value}"]`; warn = false;
-    } else {
-      locator = `${tag}[name="${attrs.name}"]`; warn = false;
-    }
-    found = true;
-  }
-
-  // ── P5: WDIO text selectors (interactive/semantic tags, stable text) ────
-  // "Best. Resembles how the user interacts with the page and is fast."
-  // See webdriver.io/docs/selectors/
-  if (!found) {
-    const trimmed = (text || '').trim();
-    if (
-      trimmed.length > 0 &&
-      trimmed.length <= 40 &&
-      INTERACTIVE_TAGS.has(tag) &&
-      !DYNAMIC_TEXT_RE.test(trimmed) &&
-      !/[\\\x00-\x1F<>]/.test(trimmed)
-    ) {
-      locator = `${tag}=${trimmed}`; warn = false; found = true;
-    }
-  }
-
-  // ── P6: role attribute (warn: not unique without additional context) ───────
-  if (!found && attrs.role) {
-    locator = `[role="${attrs.role}"]`; warn = true; found = true;
-  }
-
-  // ── P7: type attribute (potentially non-unique, warn) ────────────────────
-  if (!found && attrs.type) {
-    locator = `${tag}[type="${attrs.type}"]`; warn = true; found = true;
-  }
-
-  // ── P8: href attribute (warn, URLs are fragile: env-specific, may contain tokens) ────
-  // href values change across environments and can carry auth tokens, session IDs or
-  // query strings, so text= (P5) or aria/ (P3) are preferred for navigable anchors.
-  if (!found && attrs.href) {
-    locator = `a[href="${attrs.href}"]`; warn = true; found = true;
-  }
-
-  // ── P9: CSS/XPath fallback (last resort, warn) ───────────────────────────
-  if (!found) {
-    locator = xpath; warn = true;
-  }
-
-  return { locator, warn };
-}
-
-/**
- * Returns ALL viable locator candidates for an element, ordered by priority (best first).
- * Used by the Sidebar to offer alternative locators the user can choose from.
- *
- * Each candidate: { locator: string, warn: boolean, label: string }
  *
  * @param {{ tag: string, text: string, ariaLabel: string, id: string,
  *           idUnique: boolean, attrs: Record<string,string>, xpath: string }} info
@@ -169,42 +126,59 @@ export function getLocatorCandidates(info, testIdAttrs = TEST_ID_ATTRS) {
 
   // P1: test-id
   for (const attr of testIdAttrs) {
-    if (attrs[attr]) add(`[${attr}="${attrs[attr]}"]`, false, `test-id (${attr})`);
+    if (attrs[attr]) add(`[${attr}="${cssAttr(attrs[attr])}"]`, false, `test-id (${attr})`);
   }
 
-  // P2: unique #id
-  if (id && idUnique && !isGeneratedId(id)) add(`#${id}`, false, '#id');
+  // P2: unique, non-generated #id
+  if (id && idUnique && !isGeneratedId(id)) add(idSelector(id), false, '#id');
 
   // P3: aria/
-  if (ariaLabel) add(`aria/${ariaLabel}`, false, 'aria-label');
+  if (ariaLabel && isWdioSafeValue(ariaLabel)) add(`aria/${ariaLabel}`, false, 'aria-label');
 
   // P4a: placeholder
-  if (attrs.placeholder) add(`${tag}[placeholder="${attrs.placeholder}"]`, false, 'placeholder');
+  if (attrs.placeholder) add(`${tag}[placeholder="${cssAttr(attrs.placeholder)}"]`, false, 'placeholder');
 
   // P4b: img[alt]
-  if (tag === 'img' && attrs.alt) add(`img[alt="${attrs.alt}"]`, false, 'alt');
+  if (tag === 'img' && attrs.alt) add(`img[alt="${cssAttr(attrs.alt)}"]`, false, 'alt');
 
-  // P4c: name
+  // P4c: name (radio: name+value)
   if (attrs.name) {
     if (tag === 'input' && attrs.type === 'radio' && attrs.value) {
-      add(`input[name="${attrs.name}"][value="${attrs.value}"]`, false, 'name+value');
+      add(`input[name="${cssAttr(attrs.name)}"][value="${cssAttr(attrs.value)}"]`, false, 'name+value');
     } else {
-      add(`${tag}[name="${attrs.name}"]`, false, 'name');
+      add(`${tag}[name="${cssAttr(attrs.name)}"]`, false, 'name');
     }
+  }
+
+  // P4d: submit/button caption (WDIO aria/ does not read value)
+  if (tag === 'input' && ['submit', 'button', 'reset'].includes(attrs.type) && attrs.value) {
+    add(`input[type="${attrs.type}"][value="${cssAttr(attrs.value)}"]`, false, 'value');
   }
 
   // P5: text=
   const trimmed = (text || '').trim();
   if (trimmed.length > 0 && trimmed.length <= 40 && INTERACTIVE_TAGS.has(tag) &&
-      !DYNAMIC_TEXT_RE.test(trimmed) && !/[\\\x00-\x1F<>]/.test(trimmed)) {
+      !DYNAMIC_TEXT_RE.test(trimmed) && !/[\\\x00-\x1F<>]/.test(trimmed) && isWdioSafeValue(trimmed)) {
     add(`${tag}=${trimmed}`, false, 'text');
   }
 
-  // P8: href (warn)
-  if (attrs.href) add(`a[href="${attrs.href}"]`, true, 'href (fragile)');
+  // P6: role (warn)
+  if (attrs.role) add(`[role="${cssAttr(attrs.role)}"]`, true, 'role');
 
-  // P9: xpath (warn)
+  // P7: type (warn)
+  if (attrs.type) add(`${tag}[type="${cssAttr(attrs.type)}"]`, true, 'type');
+
+  // P8: href (warn)
+  if (attrs.href) add(`a[href="${cssAttr(attrs.href)}"]`, true, 'href (fragile)');
+
+  // P9: CSS path (warn)
   if (xpath) add(xpath, true, 'xpath');
 
   return candidates;
+}
+
+/** The first entry of getLocatorCandidates. */
+export function getBestLocator(info, testIdAttrs = TEST_ID_ATTRS) {
+  const [best] = getLocatorCandidates(info, testIdAttrs);
+  return best ? { locator: best.locator, warn: best.warn } : { locator: info.xpath, warn: true };
 }

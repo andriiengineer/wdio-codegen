@@ -13,7 +13,9 @@ npx wdio-codegen https://example.com
 Nothing to install and nothing to configure: if you already have Google Chrome, it is used as is;
 otherwise **Google Chrome for Testing** is downloaded (~150 MB). A matching chromedriver is fetched
 either way. Everything is cached in `~/.cache/wdio-codegen` (override with
-`WDIO_CODEGEN_CACHE_DIR`), so later runs start instantly.
+`WDIO_CODEGEN_CACHE_DIR`), so later runs start instantly. The code window profile lives there too;
+delete the folder to reset everything. A `~/.wdio-codegen` folder left by 1.0.1 and earlier is
+no longer used and can be deleted.
 
 **Requirements:** Node.js ≥ 20.19. Developed and tested on macOS; Linux and Windows are supported.
 
@@ -127,7 +129,6 @@ npx wdio-codegen https://example.com --output test/specs/my-test.ts
 | Flag | Description | Example |
 |---|---|---|
 | `-o, --output <file>` | Save generated code to file (auto-detects JS/TS) | `--output test/login.js` |
-| `--browser <name>` | Browser to use (`chrome`) | `--browser chrome` |
 | `--port <number>` | Code window server port (default: 9323) | `--port 9400` |
 | `--viewport-size <WxH>` | Set browser viewport | `--viewport-size 1280x720` |
 | `--device <name>` | Emulate a mobile device | `--device "iPhone 12"` |
@@ -170,7 +171,7 @@ When recording starts, two windows open side by side:
 ```
 
 - **Browser window**: your installed Chrome, or Chrome for Testing if you have none
-- **Code window**: live-generated WebdriverIO test with CodeMirror editor
+- **Code window**: live-generated WebdriverIO test, read-only (take it with Copy or `--output`)
 
 The floating toolbar on the page lets you pause, pick locators, and add assertions without switching windows.
 

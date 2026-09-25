@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>wdio-codegen locator e2e fixture</title></head>
+<body>
+
+<h2>Send</h2>
+<form onsubmit="return false"><input type="submit" value="Send" data-probe="submit-value"></form>
+
+<button aria-label='Say "hi"' data-probe="aria-quote">x</button>
+<button data-probe="text-quote">Say "hello"</button>
+<input placeholder='Your "name"' data-probe="placeholder-quote">
+
+<input id="user.name" data-probe="dotted-id">
+<input id="1st" data-probe="digit-id">
+
+<button data-probe="plain-text">Save</button>
+<button aria-label="Close dialog" data-probe="aria-label">×</button>
+<span id="card-label">Card</span><div aria-labelledby="card-label" data-probe="labelledby">•</div>
+<label for="email">Email</label><input id="email" data-probe="label-for">
+<label for=":r5:">Nickname</label><input id=":r5:" data-probe="label-for-generated-id">
+
+<input type="text"><input type="text" data-probe="type-dup">
+<div role="button">A</div><div role="button" data-probe="role-dup">B</div>
+
+<div class="logo"><span class="svg" data-probe="svg-class">★</span><span class="svg">☆</span></div>
+<span id="logo.png" data-probe="png-id">L</span>
+
+<label id="l2">Card2</label><div aria-labelledby="l2"></div><button aria-label="Card2" data-probe="aria-vs-labelledby">c</button>
+
+<x-card></x-card>
+<x-card></x-card>
+<y-widget></y-widget>
+<button aria-label="Favorite"><x-icon></x-icon></button>
+<x-btn id="buy-btn">Buy now</x-btn>
+<x-btn id="sell-btn"><span>Sell</span></x-btn>
+<x-check id="agree"></x-check>
+<x-app id="app"></x-app>
+<script>
+  document.querySelectorAll('x-card').forEach((host, i) => {
+    host.attachShadow({ mode: 'open' }).innerHTML =
+      `<button data-testid="buy" data-probe="shadow-dup-${i + 1}">Buy</button>`;
+  });
+  document.querySelector('y-widget').attachShadow({ mode: 'open' }).innerHTML =
+    '<button data-testid="solo" data-probe="shadow-solo">Solo</button>';
+  document.querySelectorAll('x-btn').forEach((host) => {
+    host.attachShadow({ mode: 'open' }).innerHTML = '<button><slot></slot></button>';
+  });
+  document.querySelector('x-app').attachShadow({ mode: 'open' }).innerHTML =
+    '<style>:host { display: block; width: 400px; height: 200px }</style>' +
+    '<span data-probe="app-menu-item">Settings</span>';
+  document.querySelector('x-check').attachShadow({ mode: 'open' }).innerHTML = '<input type="checkbox">';
+  document.querySelector('x-icon').attachShadow({ mode: 'open' }).innerHTML =
+    '<svg width="24" height="24" style="display:block"><rect width="24" height="24"/></svg>';
+</script>
+</body>
+</html>

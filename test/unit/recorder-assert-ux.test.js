@@ -1,4 +1,4 @@
-// test/unit/features-assert-ux.test.js
+// test/unit/recorder-assert-ux.test.js
 // Assert UX:
 // 1. showTextAssertForm: editable form for Text assertions (context menu + T button)
 // 2. toHaveValue in context menu (input/textarea/select only)

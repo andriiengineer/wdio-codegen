@@ -106,3 +106,14 @@ describe('no second browser bootstrap of our own', () => {
     expect(wf).not.toContain('CHROMEDRIVER_SKIP_DOWNLOAD');
   });
 });
+
+// One home folder: the code window profile sits next to the browser cache, so there is
+// a single place to clean up and WDIO_CODEGEN_CACHE_DIR moves both.
+describe('code window profile location', () => {
+  const SETUP_SRC = fs.readFileSync(SETUP_PATH, 'utf8');
+
+  it('lives under BROWSER_CACHE_DIR, not ~/.wdio-codegen', () => {
+    expect(SETUP_SRC).toMatch(/path\.join\(BROWSER_CACHE_DIR, 'inspector-profile'\)/);
+    expect(SETUP_SRC).not.toContain('.wdio-codegen');
+  });
+});

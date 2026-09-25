@@ -191,17 +191,3 @@ export function getHumanLabel(event) {
     default:               return event.type;
   }
 }
-
-export function wrapInTest(lines) {
-  // Add `import { Key } from 'webdriverio'` only when the generated code uses Key.* constants.
-  // This avoids an unused import in tests that contain no keyboard combinations.
-  const needsKeyImport = lines.some(l => /\bKey\./.test(l));
-  return [
-    ...(needsKeyImport ? [`import { Key } from 'webdriverio';\n`] : []),
-    `describe('Recorded flow', () => {`,
-    `  it('should complete the flow', async () => {`,
-    ...lines,
-    `  });`,
-    `});`,
-  ].join('\n');
-}

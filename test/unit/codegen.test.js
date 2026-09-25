@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateLine, wrapInTest, escapeStr, getHumanLabel } from '../../src/codegen.js';
+import { generateLine, escapeStr, getHumanLabel } from '../../src/codegen.js';
 
 describe('generateLine', () => {
   it('navigate', () => {
@@ -278,30 +278,6 @@ describe('generateLine', () => {
       expect(generateLine({ type: 'assert:not:toHaveText', locator: 'h1=Hi', value: "O'Brien" }))
         .toBe(`    await expect($('h1=Hi')).not.toHaveText('O\\'Brien');`);
     });
-  });
-});
-
-describe('wrapInTest', () => {
-  it('wraps lines in describe/it block', () => {
-    const lines = [`    await browser.url('https://app.com');`];
-    const result = wrapInTest(lines);
-    expect(result).toContain(`describe('Recorded flow'`);
-    expect(result).toContain(`it('should complete the flow'`);
-    expect(result).toContain(`await browser.url('https://app.com');`);
-  });
-
-  it('does NOT add Key import when no combinations present', () => {
-    const lines = [`    await browser.keys('Enter');`, `    await $('button=Save').click();`];
-    const result = wrapInTest(lines);
-    expect(result).not.toContain(`import { Key }`);
-  });
-
-  it('adds Key import when combinations are present', () => {
-    const lines = [`    await browser.keys([Key.Ctrl, 'a']);`];
-    const result = wrapInTest(lines);
-    expect(result).toContain(`import { Key } from 'webdriverio';`);
-    // Import must appear before describe block
-    expect(result.indexOf(`import { Key }`)).toBeLessThan(result.indexOf(`describe(`));
   });
 });
 

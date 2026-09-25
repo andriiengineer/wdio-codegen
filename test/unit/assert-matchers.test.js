@@ -1,8 +1,9 @@
-// test/unit/features-assertions-p3.test.js
-// P3 assertions and flags:
-// 1. toMatchScreenshot assertion
-// 2. toBeInViewport assertion
-// 3. --geolocation CLI flag
+// test/unit/assert-matchers.test.js
+// Assertion matchers: which ones the recorder context menu offers and codegen emits.
+// 1. toBeChecked
+// 2. not.* assertions
+// 3. toMatchScreenshot must not be generated
+// 4. toBeInViewport
 import { describe, it, expect } from 'vitest';
 import { generateLine, getHumanLabel } from '../../src/codegen.js';
 import fs from 'node:fs';
@@ -13,17 +14,30 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RECORDER_SRC = fs.readFileSync(
   path.join(__dirname, '../../src/recorder.content.js'), 'utf8'
 );
-const LAUNCHER_SRC = fs.readFileSync(
-  path.join(__dirname, '../../src/launcher.js'), 'utf8'
-);
-const EMULATION_SRC = fs.readFileSync(
-  path.join(__dirname, '../../src/launcher/emulation.js'), 'utf8'
-);
-const CLI_SRC = fs.readFileSync(
-  path.join(__dirname, '../../bin/wdio-codegen.js'), 'utf8'
-);
 
-// ── 1. toMatchScreenshot ─────────────────────────────────────────────────────
+// ── 1. toBeChecked in recorder context menu ──────────────────────────────────
+describe('toBeChecked in recorder context menu', () => {
+  it('recorder context menu has "Is checked" or "toBeChecked" item', () => {
+    expect(RECORDER_SRC).toMatch(/toBeChecked|is.checked/i);
+  });
+
+  it('recorder sends assert:toBeChecked event', () => {
+    expect(RECORDER_SRC).toContain("assert:toBeChecked");
+  });
+});
+
+// ── 2. not. assertions in recorder context menu ──────────────────────────────
+describe('not. assertions in recorder context menu', () => {
+  it('recorder has assert:not:toBeDisplayed event', () => {
+    expect(RECORDER_SRC).toContain('assert:not:toBeDisplayed');
+  });
+
+  it('recorder context menu offers "not visible" / "hidden" option', () => {
+    expect(RECORDER_SRC).toMatch(/not.visible|not.*displayed|is.hidden|hidden|not.toBeDisplayed/i);
+  });
+});
+
+// ── 3. toMatchScreenshot ─────────────────────────────────────────────────────
 // expect-webdriverio has no toMatchScreenshot matcher: visual comparison lives in the
 // separate @wdio/visual-service package, which is not a dependency here.
 describe('toMatchScreenshot must not be generated', () => {
@@ -36,7 +50,7 @@ describe('toMatchScreenshot must not be generated', () => {
   });
 });
 
-// ── 2. toBeInViewport ────────────────────────────────────────────────────────
+// ── 4. toBeInViewport ────────────────────────────────────────────────────────
 describe('toBeInViewport: codegen', () => {
   it('generates toBeInViewport() for element', () => {
     const line = generateLine({ type: 'assert:toBeInViewport', locator: '.banner' });
@@ -67,30 +81,5 @@ describe('toBeInViewport: recorder context menu', () => {
 
   it('sends assert:toBeInViewport event type', () => {
     expect(RECORDER_SRC).toMatch(/assert:toBeInViewport/);
-  });
-});
-
-// ── 3. --geolocation CLI flag ────────────────────────────────────────────────
-describe('--geolocation CLI flag', () => {
-  it('bin/wdio-codegen.js has geolocation option', () => {
-    expect(CLI_SRC).toMatch(/['"]geolocation['"]/);
-  });
-
-  it('help text mentions --geolocation', () => {
-    expect(CLI_SRC).toMatch(/--geolocation/);
-  });
-
-  it('launcher.js accepts geolocation parameter', () => {
-    expect(LAUNCHER_SRC).toMatch(/geolocation/i);
-  });
-
-  it('launcher parses lat,lng format', () => {
-    // e.g. "37.7749,-122.4194" → { latitude: 37.7749, longitude: -122.4194 }
-    expect(EMULATION_SRC).toMatch(/latitude|lat/i);
-    expect(EMULATION_SRC).toMatch(/longitude|lng|lon/i);
-  });
-
-  it('launcher sets geolocation via CDP Emulation.setGeolocationOverride', () => {
-    expect(EMULATION_SRC).toMatch(/setGeolocationOverride|Emulation.*[Gg]eolocation|overrideGeolocation/);
   });
 });

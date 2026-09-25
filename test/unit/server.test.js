@@ -82,6 +82,18 @@ describe('server WS messages', () => {
   });
 });
 
+// CodePanel highlights entry i at line header + i + 1, which holds only while every
+// entry is exactly one line of code.
+describe('multi-line events become one entry per line', () => {
+  it('an iframe assertion yields three single-line assert entries', () => {
+    const srv = createServer({ port: nextPort() });
+    srv.addEvent({ type: 'assert:toBeDisplayed', locator: '#el', _frame: 'iframe' });
+    const lines = srv.getLines();
+    expect(lines).toHaveLength(3);
+    expect(lines.every(l => !l.text.includes('\n') && l.isAssert)).toBe(true);
+  });
+});
+
 // ── browserName in init WS message ───────────────────────────────────────────
 describe('server sends browserName in init message', () => {
   it('init message includes browserName when explicitly set', async () => {

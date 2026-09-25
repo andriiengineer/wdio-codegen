@@ -3,6 +3,44 @@ var TEST_ID_ATTRS = ["data-testid", "data-test", "data-cy", "data-pw", "test-id"
 var INTERACTIVE_TAGS = /* @__PURE__ */ new Set(["button", "a", "h1", "h2", "h3", "h4", "h5", "h6", "th", "label", "option", "li"]);
 var DYNAMIC_TEXT_RE = /^[\d\s$€£¥,.%+\-()\/:]+$|(\d{4}[-\/]\d{2}[-\/]\d{2}|\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/;
 var GENERATED_ID_PREFIX_RE = /^(mui-|radix-|headlessui-|react-select-|floating-ui-|popper-|rc-|ant-|el-|ember|__next-|__relay-)/i;
+function cssAttr(value) {
+  return String(value).replace(/["\\]/g, "\\$&").replace(/[\n\r\f]/g, (c) => `\\${c.charCodeAt(0).toString(16)} `);
+}
+function idSelector(id) {
+  return /^-?[A-Za-z_][\w-]*$/.test(id) ? `#${id}` : `[id="${cssAttr(id)}"]`;
+}
+function isWdioImageSelector(selector) {
+  return /\.(jpe?g|gif|png|bmp|svg)$/i.test(selector);
+}
+function isWdioSafeValue(value) {
+  return !value.includes('"') && !isWdioImageSelector(value);
+}
+function wdioXPathBranches(locator) {
+  if (locator.startsWith("aria/")) {
+    const l = locator.slice("aria/".length);
+    return [
+      `.//*[@aria-labelledby=(//*[normalize-space(text()) = "${l}"]/@id)]`,
+      `.//*[@aria-describedby=(//*[normalize-space(text()) = "${l}"]/@id)]`,
+      `.//*[@aria-label = "${l}"]`,
+      `.//input[@id = (//label[normalize-space() = "${l}"]/@for)]`,
+      `.//textarea[@id = (//label[normalize-space() = "${l}"]/@for)]`,
+      `.//input[ancestor::label[normalize-space(text()) = "${l}"]]`,
+      `.//textarea[ancestor::label[normalize-space(text()) = "${l}"]]`,
+      `.//input[@placeholder="${l}"]`,
+      `.//textarea[@placeholder="${l}"]`,
+      `.//input[@aria-placeholder="${l}"]`,
+      `.//textarea[@aria-placeholder="${l}"]`,
+      `.//*[not(self::label)][@title="${l}"]`,
+      `.//img[@alt="${l}"]`,
+      `.//*[not(self::label)][normalize-space(text()) = "${l}"]`
+    ];
+  }
+  const m = locator.match(/^(\w+)=(.+)$/);
+  if (!m) return null;
+  const [, tag, text] = m;
+  const own = `.//${tag}[normalize-space(text()) = "${text}"]`;
+  return [own, `.//${tag}[not(${own}) and normalize-space() = "${text}"]`];
+}
 function isGeneratedId(id) {
   if (!id) return false;
   if (id.includes(":")) return true;
@@ -11,76 +49,41 @@ function isGeneratedId(id) {
   if (/[-_]\d{3,}$/.test(id)) return true;
   return false;
 }
-function getBestLocator(info, testIdAttrs = TEST_ID_ATTRS) {
+function getLocatorCandidates(info, testIdAttrs = TEST_ID_ATTRS) {
   const { tag, text, ariaLabel, id, idUnique, attrs = {}, xpath } = info;
-  let locator, warn;
-  let found = false;
+  const candidates = [];
+  const seen = /* @__PURE__ */ new Set();
+  function add(locator, warn, label) {
+    if (!locator || seen.has(locator)) return;
+    seen.add(locator);
+    candidates.push({ locator, warn, label });
+  }
   for (const attr of testIdAttrs) {
-    if (attrs[attr]) {
-      locator = `[${attr}="${attrs[attr]}"]`;
-      warn = false;
-      found = true;
-      break;
-    }
+    if (attrs[attr]) add(`[${attr}="${cssAttr(attrs[attr])}"]`, false, `test-id (${attr})`);
   }
-  if (!found && id && idUnique && !isGeneratedId(id)) {
-    locator = `#${id}`;
-    warn = false;
-    found = true;
-  }
-  if (!found && ariaLabel) {
-    locator = `aria/${ariaLabel}`;
-    warn = false;
-    found = true;
-  }
-  if (!found && attrs.placeholder) {
-    locator = `${tag}[placeholder="${attrs.placeholder}"]`;
-    warn = false;
-    found = true;
-  }
-  if (!found && tag === "img" && attrs.alt) {
-    locator = `img[alt="${attrs.alt}"]`;
-    warn = false;
-    found = true;
-  }
-  if (!found && attrs.name) {
+  if (id && idUnique && !isGeneratedId(id)) add(idSelector(id), false, "#id");
+  if (ariaLabel && isWdioSafeValue(ariaLabel)) add(`aria/${ariaLabel}`, false, "aria-label");
+  if (attrs.placeholder) add(`${tag}[placeholder="${cssAttr(attrs.placeholder)}"]`, false, "placeholder");
+  if (tag === "img" && attrs.alt) add(`img[alt="${cssAttr(attrs.alt)}"]`, false, "alt");
+  if (attrs.name) {
     if (tag === "input" && attrs.type === "radio" && attrs.value) {
-      locator = `input[name="${attrs.name}"][value="${attrs.value}"]`;
-      warn = false;
+      add(`input[name="${cssAttr(attrs.name)}"][value="${cssAttr(attrs.value)}"]`, false, "name+value");
     } else {
-      locator = `${tag}[name="${attrs.name}"]`;
-      warn = false;
-    }
-    found = true;
-  }
-  if (!found) {
-    const trimmed = (text || "").trim();
-    if (trimmed.length > 0 && trimmed.length <= 40 && INTERACTIVE_TAGS.has(tag) && !DYNAMIC_TEXT_RE.test(trimmed) && !/[\\\x00-\x1F<>]/.test(trimmed)) {
-      locator = `${tag}=${trimmed}`;
-      warn = false;
-      found = true;
+      add(`${tag}[name="${cssAttr(attrs.name)}"]`, false, "name");
     }
   }
-  if (!found && attrs.role) {
-    locator = `[role="${attrs.role}"]`;
-    warn = true;
-    found = true;
+  if (tag === "input" && ["submit", "button", "reset"].includes(attrs.type) && attrs.value) {
+    add(`input[type="${attrs.type}"][value="${cssAttr(attrs.value)}"]`, false, "value");
   }
-  if (!found && attrs.type) {
-    locator = `${tag}[type="${attrs.type}"]`;
-    warn = true;
-    found = true;
+  const trimmed = (text || "").trim();
+  if (trimmed.length > 0 && trimmed.length <= 40 && INTERACTIVE_TAGS.has(tag) && !DYNAMIC_TEXT_RE.test(trimmed) && !/[\\\x00-\x1F<>]/.test(trimmed) && isWdioSafeValue(trimmed)) {
+    add(`${tag}=${trimmed}`, false, "text");
   }
-  if (!found && attrs.href) {
-    locator = `a[href="${attrs.href}"]`;
-    warn = true;
-    found = true;
-  }
-  if (!found) {
-    locator = xpath;
-    warn = true;
-  }
-  return { locator, warn };
+  if (attrs.role) add(`[role="${cssAttr(attrs.role)}"]`, true, "role");
+  if (attrs.type) add(`${tag}[type="${cssAttr(attrs.type)}"]`, true, "type");
+  if (attrs.href) add(`a[href="${cssAttr(attrs.href)}"]`, true, "href (fragile)");
+  if (xpath) add(xpath, true, "xpath");
+  return candidates;
 }
 
 // src/class-filter.js
@@ -217,15 +220,15 @@ var _SKIP_CLASS_RE = /^(active|selected|hover|focus|focused|disabled|hidden|visi
 function _bestCSSSegment(node) {
   const tag = node.tagName.toLowerCase();
   const stableCls = [...node.classList].filter(
-    (c) => c.length > 2 && !_SKIP_CLASS_RE.test(c) && !/^\d/.test(c) && !isUnstableClass(c)
+    (c) => c.length > 2 && !_SKIP_CLASS_RE.test(c) && !/^\d/.test(c) && !isUnstableClass(c) && !isWdioImageSelector(`.${c}`)
   );
   if (stableCls.length > 0) return `${tag}.${CSS.escape(stableCls[0])}`;
   for (const a of TEST_ID_ATTRS) {
     const v = node.getAttribute(a);
-    if (v) return `[${a}="${v}"]`;
+    if (v) return `[${a}="${cssAttr(v)}"]`;
   }
   const al = node.getAttribute("aria-label");
-  if (al) return `${tag}[aria-label="${al}"]`;
+  if (al) return `${tag}[aria-label="${cssAttr(al)}"]`;
   const parent = node.parentElement;
   if (parent) {
     const sameTag = [...parent.children].filter((c) => c.tagName === node.tagName);
@@ -239,6 +242,58 @@ function _queryRoot(el) {
   const root = el.getRootNode();
   return root instanceof ShadowRoot ? root : document;
 }
+function _searchRoots() {
+  const roots = [document];
+  for (let i = 0; i < roots.length; i++) {
+    for (const node of roots[i].querySelectorAll("*")) if (node.shadowRoot) roots.push(node.shadowRoot);
+  }
+  return roots;
+}
+var _roots = null;
+var _LABEL_REF_RE = /^\.\/\/(\*|input|textarea)\[@([\w-]+) ?= ?\((.+)\/@(id|for)\)\]$/;
+function _wdioXPath(locator) {
+  const branches = wdioXPathBranches(locator);
+  if (!branches) return null;
+  return branches.flatMap((branch) => {
+    const m = branch.match(_LABEL_REF_RE);
+    if (!m) return [branch];
+    const [, tag, attr, subQuery, refAttr] = m;
+    const r = document.evaluate(`${subQuery}/@${refAttr}`, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+    const ids = Array.from({ length: r.snapshotLength }, (_, i) => r.snapshotItem(i).value);
+    if (ids.some((id) => id.includes('"'))) return [branch];
+    return ids.length ? [`.//${tag}[${ids.map((id) => `@${attr}="${id}"`).join(" or ")}]`] : [];
+  }).join(" | ");
+}
+function _deepMatches(locator) {
+  if (isWdioImageSelector(locator)) return [];
+  const xpath = _wdioXPath(locator);
+  const hits = [];
+  for (const root of _roots ?? _searchRoots()) {
+    if (!xpath) {
+      hits.push(...root.querySelectorAll(locator));
+      continue;
+    }
+    if (root !== document) continue;
+    const r = document.evaluate(xpath, root, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+    for (let i = 0; i < r.snapshotLength; i++) hits.push(r.snapshotItem(i));
+  }
+  return hits;
+}
+function _isUnique(locator) {
+  try {
+    return _deepMatches(locator).length === 1;
+  } catch {
+    return false;
+  }
+}
+function _resolvesOnlyTo(locator, el) {
+  try {
+    const hits = _deepMatches(locator);
+    return hits.length === 1 && hits[0] === el;
+  } catch {
+    return false;
+  }
+}
 function _buildScopedCSS(anchorSelector, anchorEl, targetEl) {
   const segs = [];
   let node = targetEl;
@@ -247,7 +302,6 @@ function _buildScopedCSS(anchorSelector, anchorEl, targetEl) {
     node = node.parentElement;
   }
   if (!segs.length) return null;
-  const qRoot = _queryRoot(targetEl);
   const candidates = [
     `${anchorSelector} ${segs.join(" > ")}`,
     // exact chain with >
@@ -258,7 +312,7 @@ function _buildScopedCSS(anchorSelector, anchorEl, targetEl) {
   ];
   for (const c of candidates) {
     try {
-      if (qRoot.querySelectorAll(c).length === 1) return c;
+      if (_isUnique(c)) return c;
     } catch {
     }
   }
@@ -266,20 +320,20 @@ function _buildScopedCSS(anchorSelector, anchorEl, targetEl) {
 }
 function buildFallbackSelector(el) {
   const qRoot = _queryRoot(el);
-  if (el.id && qRoot.querySelectorAll(`#${CSS.escape(el.id)}`).length === 1)
+  if (el.id && _isUnique(`#${CSS.escape(el.id)}`))
     return `#${CSS.escape(el.id)}`;
   let anchor = el.parentElement;
   let depth = 0;
   const docRoot = qRoot === document ? document.documentElement : qRoot;
   while (anchor && anchor !== docRoot && depth < 8) {
     let anchorSel = null;
-    if (anchor.id && qRoot.querySelectorAll(`#${CSS.escape(anchor.id)}`).length === 1) {
+    if (anchor.id && _isUnique(`#${CSS.escape(anchor.id)}`)) {
       anchorSel = `#${CSS.escape(anchor.id)}`;
     } else {
       for (const a of TEST_ID_ATTRS) {
         const v = anchor.getAttribute(a);
         if (v) {
-          anchorSel = `[${a}="${v}"]`;
+          anchorSel = `[${a}="${cssAttr(v)}"]`;
           break;
         }
       }
@@ -314,7 +368,7 @@ function extractInfo(el) {
     }
   }
   const id = el.id || "";
-  const idUnique = id ? _queryRoot(el).querySelectorAll(`#${CSS.escape(id)}`).length === 1 : false;
+  const idUnique = id ? _isUnique(`[id="${cssAttr(id)}"]`) : false;
   const attrs = {};
   for (const attr of [...TEST_ID_ATTRS, "type", "name", "role", "href", "placeholder", "value"])
     if (el.hasAttribute(attr)) attrs[attr] = el.getAttribute(attr);
@@ -336,9 +390,6 @@ function extractInfo(el) {
     }
   }
   if (!ariaLabel && el.getAttribute("title")) ariaLabel = el.getAttribute("title").trim();
-  if (tag === "input" && (attrs.type === "submit" || attrs.type === "button") && !ariaLabel && el.value) {
-    ariaLabel = el.value;
-  }
   if (["input", "textarea", "select"].includes(tag) && !ariaLabel) {
     let labelEl = el.labels && el.labels[0];
     if (!labelEl && el.id) labelEl = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
@@ -347,78 +398,59 @@ function extractInfo(el) {
   const xpath = buildFallbackSelector(el);
   return { tag, text, ariaLabel, id, idUnique, attrs, xpath };
 }
-function getUniqueLocator(el) {
-  const info = extractInfo(el);
-  let { locator, warn } = getBestLocator(info);
-  if (warn) return { locator, warn };
-  if (locator.startsWith("aria/") || locator.startsWith("/") || locator.startsWith("(")) {
-    return { locator, warn: false };
-  }
-  const textSel = locator.match(/^(\w+)=(.+)$/);
-  if (textSel) {
-    const [, sTag, sTxt] = textSel;
-    try {
-      const matchCount = Array.from(document.querySelectorAll(sTag)).filter(
-        (e) => (e.innerText || e.textContent || "").trim().split("\n")[0].trim() === sTxt
-      ).length;
-      return { locator, warn: matchCount !== 1 };
-    } catch {
-    }
-    return { locator, warn: true };
-  }
-  let count;
+function getUniqueLocator(el, info) {
+  _roots = _searchRoots();
   try {
-    count = document.querySelectorAll(locator).length;
-  } catch {
-    return { locator: info.xpath, warn: true };
+    info ??= extractInfo(el);
+    const candidates = getLocatorCandidates(info);
+    const stable = candidates.filter((c) => !c.warn);
+    for (const { locator } of stable) {
+      if (_resolvesOnlyTo(locator, el)) return { locator, warn: false };
+    }
+    const cssBase = stable.find((c) => !wdioXPathBranches(c.locator))?.locator;
+    const narrowed = cssBase && _narrow(cssBase, el);
+    if (narrowed) return { locator: narrowed, warn: false };
+    const weak = candidates.find((c) => c.warn && _resolvesOnlyTo(c.locator, el));
+    return { locator: weak?.locator ?? info.xpath, warn: true };
+  } finally {
+    _roots = null;
   }
-  if (count === 1) return { locator, warn: false };
+}
+function _narrow(locator, el) {
   const classes = [...el.classList].filter((c) => !_SKIP_CLASS_RE.test(c) && c.length > 2 && !isUnstableClass(c));
   for (const cls of classes.slice(0, 4)) {
     const candidate = `${locator}.${CSS.escape(cls)}`;
-    try {
-      if (document.querySelectorAll(candidate).length === 1) return { locator: candidate, warn: false };
-    } catch {
-    }
+    if (_resolvesOnlyTo(candidate, el)) return candidate;
   }
   if (classes.length >= 2) {
     const candidate = `${locator}${classes.slice(0, 2).map((c) => `.${CSS.escape(c)}`).join("")}`;
-    try {
-      if (document.querySelectorAll(candidate).length === 1) return { locator: candidate, warn: false };
-    } catch {
-    }
+    if (_resolvesOnlyTo(candidate, el)) return candidate;
   }
   const ariaAttr = el.getAttribute("aria-label");
   if (ariaAttr) {
-    const candidate = `[aria-label="${ariaAttr}"]`;
-    try {
-      if (document.querySelectorAll(candidate).length === 1) return { locator: candidate, warn: false };
-    } catch {
-    }
+    const candidate = `[aria-label="${cssAttr(ariaAttr)}"]`;
+    if (_resolvesOnlyTo(candidate, el)) return candidate;
   }
   let ancestor = el.parentElement;
   for (let depth = 0; ancestor && depth < 5; depth++, ancestor = ancestor.parentElement) {
     let ancLoc = null;
-    if (ancestor.id && document.querySelectorAll(`#${CSS.escape(ancestor.id)}`).length === 1) {
+    if (ancestor.id && _isUnique(`#${CSS.escape(ancestor.id)}`)) {
       ancLoc = `#${CSS.escape(ancestor.id)}`;
     } else {
       for (const attr of TEST_ID_ATTRS) {
         const val = ancestor.getAttribute(attr);
         if (val) {
-          ancLoc = `[${attr}="${val}"]`;
+          ancLoc = `[${attr}="${cssAttr(val)}"]`;
           break;
         }
       }
     }
     if (ancLoc) {
       const candidate = `${ancLoc} ${locator}`;
-      try {
-        if (document.querySelectorAll(candidate).length === 1) return { locator: candidate, warn: false };
-      } catch {
-      }
+      if (_resolvesOnlyTo(candidate, el)) return candidate;
     }
   }
-  return { locator: info.xpath, warn: true };
+  return null;
 }
 
 // src/recorder-modules/recorder-helpers.js
@@ -462,14 +494,7 @@ function resolveTextAssertLocator(el, locator, warn, text) {
   if (textSelMatch && textSelMatch[2] === text) {
     const infoNoText = extractInfo(el);
     infoNoText.text = "";
-    const reExtracted = getBestLocator(infoNoText);
-    let assertLocator = reExtracted.locator;
-    let assertWarn = reExtracted.warn;
-    if (assertLocator.match(/^\w+=.+$/)) {
-      assertLocator = buildFallbackSelector(el);
-      assertWarn = true;
-    }
-    return { locator: assertLocator, warn: assertWarn };
+    return getUniqueLocator(el, infoNoText);
   }
   return { locator, warn };
 }
@@ -1082,6 +1107,17 @@ function _isRecordableInput(el) {
   }
   return el.isContentEditable && el.tagName !== "BODY";
 }
+function targetOf(e) {
+  return e.composedPath().find((n) => n instanceof Element) ?? e.target;
+}
+var CLICKABLE = 'button, a, [role="button"], input[type="submit"], input[type="button"]';
+function clickTargetOf(e) {
+  const start = targetOf(e);
+  for (let n = start; n; n = n.parentElement ?? n.getRootNode().host) {
+    if (n.matches(CLICKABLE)) return n;
+  }
+  return start;
+}
 function attachEventListeners({
   send,
   getPickMode,
@@ -1102,11 +1138,24 @@ function attachEventListeners({
 }) {
   let hoverTimer = null;
   let dragSourceEl = null;
+  function clickLocator(el) {
+    const own = getUniqueLocator2(el);
+    const r = el.getBoundingClientRect();
+    for (let n = el; own.warn && n.getRootNode() instanceof ShadowRoot; ) {
+      n = n.getRootNode().host;
+      const h = n.getBoundingClientRect();
+      const cx = h.left + h.width / 2, cy = h.top + h.height / 2;
+      if (cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) continue;
+      const host = getUniqueLocator2(n);
+      if (!host.warn) return host;
+    }
+    return own;
+  }
   document.addEventListener("click", (e) => {
-    const el = e.target.closest('button, a, [role="button"], input[type="submit"], input[type="button"]') || e.target;
+    const el = clickTargetOf(e);
     if (!el || el === document.body) return;
     if (el.closest('[id^="__wdio_"]')) return;
-    if (el.tagName === "INPUT" && (el.type === "checkbox" || el.type === "radio")) return;
+    if (el.tagName === "INPUT" && (el.type === "checkbox" || el.type === "radio") && el.getRootNode() === document) return;
     if (getPickMode()) {
       const { locator: locator2, warn: warn2 } = getUniqueLocator2(el);
       window.__wdioRecord?.(JSON.stringify({ type: "pick", locator: locator2, _warn: warn2 }));
@@ -1147,7 +1196,7 @@ function attachEventListeners({
       send({ type: "download", locator: locator2, filename, _warn: warn2 });
       return;
     }
-    const { locator, warn } = getUniqueLocator2(el);
+    const { locator, warn } = clickLocator(el);
     const payload = { type: "click", locator, _warn: warn };
     onCancelClick();
     setClickBuf({
@@ -1159,15 +1208,15 @@ function attachEventListeners({
     });
   }, true);
   document.addEventListener("dblclick", (e) => {
-    if (e.target.closest('[id^="__wdio_"]')) return;
-    const el = e.target.closest('button, a, [role="button"], input[type="submit"], input[type="button"]') || e.target;
+    if (targetOf(e).closest('[id^="__wdio_"]')) return;
+    const el = clickTargetOf(e);
     if (!el || el === document.body) return;
     onCancelClick();
-    const { locator, warn } = getUniqueLocator2(el);
+    const { locator, warn } = clickLocator(el);
     send({ type: "dblclick", locator, _warn: warn });
   }, true);
   document.addEventListener("change", (e) => {
-    const el = e.target;
+    const el = targetOf(e);
     if (el.closest('[id^="__wdio_"]')) return;
     if (el.tagName === "SELECT") {
       const { locator, warn } = getUniqueLocator2(el);
@@ -1190,19 +1239,19 @@ function attachEventListeners({
     }
   }, true);
   document.addEventListener("focusin", (e) => {
-    const el = e.target;
+    const el = targetOf(e);
     if (!_isRecordableInput(el)) return;
     getFocusValues().set(el, el.isContentEditable ? el.innerText.replace(/\n$/, "") : el.value);
   }, true);
   document.addEventListener("input", (e) => {
-    const el = e.target;
+    const el = targetOf(e);
     if (!_isRecordableInput(el)) return;
     if (el.tagName === "INPUT" && el.type === "file") return;
     const { locator, warn } = getUniqueLocator2(el);
     setInputBuf({ el, locator, warn });
   }, true);
   document.addEventListener("blur", (e) => {
-    const el = e.target;
+    const el = targetOf(e);
     if (!_isRecordableInput(el)) return;
     if (getInputBuf()?.el === el) onFlushInput();
   }, true);
@@ -1213,7 +1262,7 @@ function attachEventListeners({
       e.stopPropagation();
       return;
     }
-    if (e.target.closest('[id^="__wdio_"]')) return;
+    if (targetOf(e).closest('[id^="__wdio_"]')) return;
     if (["Shift", "Control", "Meta", "Alt"].includes(e.key)) return;
     const isMac = navigator.platform.includes("Mac");
     if (e.key === "v" && (isMac ? e.metaKey : e.ctrlKey)) return;
@@ -1266,11 +1315,11 @@ function attachEventListeners({
     }
   }, true);
   document.addEventListener("dragstart", (e) => {
-    dragSourceEl = e.target;
+    dragSourceEl = targetOf(e);
   }, true);
   document.addEventListener("drop", (e) => {
     if (!dragSourceEl) return;
-    const target = e.target;
+    const target = targetOf(e);
     if (!target || target === dragSourceEl || target === document.body) return;
     if (target.closest('[id^="__wdio_"]')) return;
     const { locator: srcLoc, warn: srcWarn } = getUniqueLocator2(dragSourceEl);
@@ -1290,18 +1339,18 @@ function attachEventListeners({
     getHighlight()?.clearQuery();
   }, { capture: true, passive: true });
   document.addEventListener("mouseover", (e) => {
-    if (e.target.closest('[id^="__wdio_"]')) {
+    if (targetOf(e).closest('[id^="__wdio_"]')) {
       getHighlight()?.clearHover();
       getHighlight()?.updateHoverLocator("");
       return;
     }
-    if (e.target === document.body || e.target === document.documentElement) {
+    if (targetOf(e) === document.body || targetOf(e) === document.documentElement) {
       getHighlight()?.clearHover();
       getHighlight()?.updateHoverLocator("");
       return;
     }
     clearTimeout(hoverTimer);
-    const target = e.target;
+    const target = targetOf(e);
     hoverTimer = setTimeout(() => {
       const { locator } = getUniqueLocator2(target);
       getHighlight()?.showHover(target, locator);
@@ -1310,14 +1359,14 @@ function attachEventListeners({
   }, true);
   document.addEventListener("mouseout", (e) => {
     clearTimeout(hoverTimer);
-    if (e.target.closest('[id^="__wdio_"]')) return;
+    if (targetOf(e).closest('[id^="__wdio_"]')) return;
     getHighlight()?.clearHover();
     getHighlight()?.updateHoverLocator("");
   }, true);
   document.addEventListener("contextmenu", (e) => {
-    if (e.target.closest('[id^="__wdio_"]')) return;
+    if (targetOf(e).closest('[id^="__wdio_"]')) return;
     e.preventDefault();
-    const el = e.target;
+    const el = targetOf(e);
     const { locator, warn } = getUniqueLocator2(el);
     const text = (el.innerText || "").trim().split("\n")[0].trim().slice(0, 60);
     const isCheckable = el.type === "checkbox" || el.type === "radio";

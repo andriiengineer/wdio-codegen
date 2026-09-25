@@ -14,6 +14,22 @@ function _isRecordableInput(el) {
   return el.isContentEditable && el.tagName !== 'BODY';
 }
 
+// On document, events from an open shadow root arrive retargeted to the host; composedPath() has the real element.
+function targetOf(e) {
+  return e.composedPath().find(n => n instanceof Element) ?? e.target;
+}
+
+const CLICKABLE = 'button, a, [role="button"], input[type="submit"], input[type="button"]';
+
+// Nearest clickable ancestor, stepping out of shadow roots to their hosts (never into a slot).
+function clickTargetOf(e) {
+  const start = targetOf(e);
+  for (let n = start; n; n = n.parentElement ?? n.getRootNode().host) {
+    if (n.matches(CLICKABLE)) return n;
+  }
+  return start;
+}
+
 export function attachEventListeners({
   send,
   getPickMode, setPickMode,
@@ -33,12 +49,27 @@ export function attachEventListeners({
   let hoverTimer = null;
   let dragSourceEl = null;
 
+  // A shadow control without a stable locator is clicked via its host, if the host's centre lands on it.
+  function clickLocator(el) {
+    const own = getUniqueLocator(el);
+    const r = el.getBoundingClientRect();
+    for (let n = el; own.warn && n.getRootNode() instanceof ShadowRoot;) {
+      n = n.getRootNode().host;
+      const h = n.getBoundingClientRect();
+      const cx = h.left + h.width / 2, cy = h.top + h.height / 2;
+      if (cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) continue;
+      const host = getUniqueLocator(n);
+      if (!host.warn) return host;
+    }
+    return own;
+  }
+
   document.addEventListener('click', (e) => {
-    const el = e.target.closest('button, a, [role="button"], input[type="submit"], input[type="button"]') || e.target;
+    const el = clickTargetOf(e);
     if (!el || el === document.body) return;
     if (el.closest('[id^="__wdio_"]')) return;
-    // checkboxes/radios are recorded via the change event (check/uncheck)
-    if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) return;
+    // checkboxes/radios are recorded via the change event, which does not leave a shadow root
+    if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio') && el.getRootNode() === document) return;
 
     if (getPickMode()) {
       const { locator, warn } = getUniqueLocator(el);
@@ -84,7 +115,7 @@ export function attachEventListeners({
     }
 
     // 300 ms buffer: a second click cancels the single and becomes dblclick.
-    const { locator, warn } = getUniqueLocator(el);
+    const { locator, warn } = clickLocator(el);
     const payload = { type: 'click', locator, _warn: warn };
     onCancelClick();
     setClickBuf({
@@ -94,16 +125,16 @@ export function attachEventListeners({
   }, true);
 
   document.addEventListener('dblclick', (e) => {
-    if (e.target.closest('[id^="__wdio_"]')) return;
-    const el = e.target.closest('button, a, [role="button"], input[type="submit"], input[type="button"]') || e.target;
+    if (targetOf(e).closest('[id^="__wdio_"]')) return;
+    const el = clickTargetOf(e);
     if (!el || el === document.body) return;
     onCancelClick(); // discard buffered single clicks
-    const { locator, warn } = getUniqueLocator(el);
+    const { locator, warn } = clickLocator(el);
     send({ type: 'dblclick', locator, _warn: warn });
   }, true);
 
   document.addEventListener('change', (e) => {
-    const el = e.target;
+    const el = targetOf(e);
     if (el.closest('[id^="__wdio_"]')) return;
     if (el.tagName === 'SELECT') {
       const { locator, warn } = getUniqueLocator(el);
@@ -129,13 +160,13 @@ export function attachEventListeners({
   }, true);
 
   document.addEventListener('focusin', (e) => {
-    const el = e.target;
+    const el = targetOf(e);
     if (!_isRecordableInput(el)) return;
     getFocusValues().set(el, el.isContentEditable ? el.innerText.replace(/\n$/, '') : el.value);
   }, true);
 
   document.addEventListener('input', (e) => {
-    const el = e.target;
+    const el = targetOf(e);
     if (!_isRecordableInput(el)) return;
     if (el.tagName === 'INPUT' && el.type === 'file') return;
     const { locator, warn } = getUniqueLocator(el);
@@ -143,7 +174,7 @@ export function attachEventListeners({
   }, true);
 
   document.addEventListener('blur', (e) => {
-    const el = e.target;
+    const el = targetOf(e);
     if (!_isRecordableInput(el)) return;
     // Only flush if the buffer belongs to this element (not a later field that already replaced it).
     if (getInputBuf()?.el === el) onFlushInput();
@@ -156,7 +187,7 @@ export function attachEventListeners({
       e.stopPropagation();
       return;
     }
-    if (e.target.closest('[id^="__wdio_"]')) return;
+    if (targetOf(e).closest('[id^="__wdio_"]')) return;
 
     // Standalone modifier keys: do not record Ctrl/Alt/Meta/Shift on their own.
     if (['Shift', 'Control', 'Meta', 'Alt'].includes(e.key)) return;
@@ -201,12 +232,12 @@ export function attachEventListeners({
   }, true);
 
   document.addEventListener('dragstart', (e) => {
-    dragSourceEl = e.target;
+    dragSourceEl = targetOf(e);
   }, true);
 
   document.addEventListener('drop', (e) => {
     if (!dragSourceEl) return;
-    const target = e.target;
+    const target = targetOf(e);
     if (!target || target === dragSourceEl || target === document.body) return;
     if (target.closest('[id^="__wdio_"]')) return;
 
@@ -230,10 +261,10 @@ export function attachEventListeners({
   window.addEventListener('scroll', () => { getHighlight()?.clearQuery(); }, { capture: true, passive: true });
 
   document.addEventListener('mouseover', (e) => {
-    if (e.target.closest('[id^="__wdio_"]')) { getHighlight()?.clearHover(); getHighlight()?.updateHoverLocator(''); return; }
-    if (e.target === document.body || e.target === document.documentElement) { getHighlight()?.clearHover(); getHighlight()?.updateHoverLocator(''); return; }
+    if (targetOf(e).closest('[id^="__wdio_"]')) { getHighlight()?.clearHover(); getHighlight()?.updateHoverLocator(''); return; }
+    if (targetOf(e) === document.body || targetOf(e) === document.documentElement) { getHighlight()?.clearHover(); getHighlight()?.updateHoverLocator(''); return; }
     clearTimeout(hoverTimer);
-    const target = e.target;
+    const target = targetOf(e);
     hoverTimer = setTimeout(() => {
       const { locator } = getUniqueLocator(target);
       getHighlight()?.showHover(target, locator);
@@ -243,15 +274,15 @@ export function attachEventListeners({
 
   document.addEventListener('mouseout', (e) => {
     clearTimeout(hoverTimer);
-    if (e.target.closest('[id^="__wdio_"]')) return;
+    if (targetOf(e).closest('[id^="__wdio_"]')) return;
     getHighlight()?.clearHover();
     getHighlight()?.updateHoverLocator('');
   }, true);
 
   document.addEventListener('contextmenu', (e) => {
-    if (e.target.closest('[id^="__wdio_"]')) return;
+    if (targetOf(e).closest('[id^="__wdio_"]')) return;
     e.preventDefault();
-    const el = e.target;
+    const el = targetOf(e);
     const { locator, warn } = getUniqueLocator(el);
     const text = (el.innerText || '').trim().split('\n')[0].trim().slice(0, 60);
     const isCheckable = el.type === 'checkbox' || el.type === 'radio';

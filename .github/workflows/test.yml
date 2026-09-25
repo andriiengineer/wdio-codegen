@@ -29,6 +29,21 @@ jobs:
       - name: Run tests
         run: npm test
 
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run browser tests
+        run: npm run test:e2e
+
   # The recorder bundle (src/recorder.content.js) and the UI bundle (ui/) are committed build
   # artifacts that ship in the tarball. Nothing else notices when they drift out of sync with
   # their sources, so rebuild them here and fail if the result differs from what was committed.

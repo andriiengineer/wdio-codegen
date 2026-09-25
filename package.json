@@ -1,6 +1,6 @@
 {
   "name": "wdio-codegen",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Record browser interactions and generate WebdriverIO test scripts",
   "type": "module",
   "engines": {
@@ -38,6 +38,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "vitest run --config vitest.e2e.config.js",
     "build": "esbuild src/recorder.source.js --bundle --format=esm --outfile=src/recorder.content.js",
     "build:ui": "vite build",
     "dev:ui": "vite",

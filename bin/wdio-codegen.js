@@ -19,6 +19,7 @@ try {
   options: {
     version:            { type: 'boolean', short: 'V' },
     output:             { type: 'string',  short: 'o' },
+    // hidden from --help, kept for backward compatibility
     browser:            { type: 'string',  short: 'b', default: 'chrome' },
     port:               { type: 'string',  default: '9323' },
     'test-id-attribute': { type: 'string' },
@@ -57,7 +58,6 @@ Arguments:
 
 Options:
   -o, --output <file>              Save generated code to file (updated live)
-  -b, --browser <name>             Browser to use (chrome)
   --port <number>                  Code window server port (default: 9323)
   --test-id-attribute <attr>       Custom test-id attribute (default: data-testid)
   --save-storage <file>            Save auth state (cookies + localStorage) to JSON on exit

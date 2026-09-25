@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getBestLocator, isGeneratedId, getLocatorCandidates } from '../../src/locator-engine.js';
+import { getBestLocator, isGeneratedId, getLocatorCandidates, toWdioXPath } from '../../src/locator-engine.js';
 
 const base = { tag: 'button', text: '', ariaLabel: '', id: '', idUnique: false, attrs: {}, xpath: '//button[1]' };
 
@@ -494,5 +494,85 @@ describe('a[href] demoted to P8 (warn)', () => {
   it('#id beats href (P2 > P8)', () => {
     const info = { ...baseA, id: 'nav-home', idUnique: true, attrs: { href: '/' } };
     expect(getBestLocator(info)).toEqual({ locator: '#nav-home', warn: false });
+  });
+});
+
+// ── 1.0.2: selectors must survive the page's own values ──────────────────────
+describe('escaping page values into selectors (A1, N3)', () => {
+  it('escapes " and \\ inside CSS attribute values', () => {
+    const info = { ...base, tag: 'input', attrs: { placeholder: 'Your "name" \\ here' } };
+    expect(getBestLocator(info).locator).toBe('input[placeholder="Your \\"name\\" \\\\ here"]');
+  });
+
+  it('escapes test-id values the same way', () => {
+    const info = { ...base, attrs: { 'data-testid': 'a"b' } };
+    expect(getBestLocator(info).locator).toBe('[data-testid="a\\"b"]');
+  });
+
+  it('keeps #id for plain ids', () => {
+    expect(getBestLocator({ ...base, id: 'email', idUnique: true }).locator).toBe('#email');
+  });
+
+  it('uses [id="…"] when the id is not a CSS identifier as-is', () => {
+    expect(getBestLocator({ ...base, id: 'user.name', idUnique: true }).locator).toBe('[id="user.name"]');
+    expect(getBestLocator({ ...base, id: '1st', idUnique: true }).locator).toBe('[id="1st"]');
+  });
+
+  it('never offers aria/ or tag=text for values with a double quote (WDIO XPath has no escape)', () => {
+    const info = { ...base, ariaLabel: 'Say "hi"', text: 'Say "hi"' };
+    const locators = getLocatorCandidates(info).map(c => c.locator);
+    expect(locators.filter(l => l.startsWith('aria/') || l.startsWith('button='))).toEqual([]);
+  });
+});
+
+describe('submit and button inputs (N1)', () => {
+  it('offers input[type][value] as a stable locator', () => {
+    const info = { ...base, tag: 'input', attrs: { type: 'submit', value: 'Send' } };
+    expect(getBestLocator(info)).toEqual({ locator: 'input[type="submit"][value="Send"]', warn: false });
+  });
+});
+
+describe('one priority ladder (A3)', () => {
+  it('getBestLocator returns the first candidate', () => {
+    const infos = [
+      { ...base, text: 'Save' },
+      { ...base, tag: 'div', attrs: { role: 'dialog' } },
+      { ...base, attrs: { type: 'submit' } },
+      { ...base, tag: 'a', attrs: { href: '/p' } },
+      { ...base, tag: 'div' },
+    ];
+    for (const info of infos) {
+      const [first] = getLocatorCandidates(info);
+      expect(getBestLocator(info)).toEqual({ locator: first.locator, warn: first.warn });
+    }
+  });
+
+  it('lists role and type (warn) before href and the CSS path', () => {
+    const info = { ...base, tag: 'a', attrs: { role: 'tab', type: 'x', href: '/p' } };
+    expect(getLocatorCandidates(info).map(c => [c.locator, c.warn])).toEqual([
+      ['[role="tab"]', true], ['a[type="x"]', true], ['a[href="/p"]', true], ['//button[1]', true],
+    ]);
+  });
+});
+
+describe('toWdioXPath: the XPath WebdriverIO 9 builds for text and aria selectors', () => {
+  it('tag=text', () => {
+    expect(toWdioXPath('button=Save')).toBe(
+      './/button[normalize-space(text()) = "Save"] | ' +
+      './/button[not(.//button[normalize-space(text()) = "Save"]) and normalize-space() = "Save"]'
+    );
+  });
+
+  it('aria/', () => {
+    const xp = toWdioXPath('aria/Close');
+    expect(xp).toContain('.//*[@aria-label = "Close"]');
+    expect(xp).toContain('.//*[not(self::label)][normalize-space(text()) = "Close"]');
+    expect(xp.split(' | ')).toHaveLength(14);
+  });
+
+  it('returns null for CSS selectors', () => {
+    expect(toWdioXPath('#id')).toBeNull();
+    expect(toWdioXPath('[data-testid="a=b"]')).toBeNull();
+    expect(toWdioXPath('input[name="q"]')).toBeNull();
   });
 });

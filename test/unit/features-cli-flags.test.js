@@ -5,7 +5,15 @@
 // 3. --color-scheme light/dark
 // 4. --user-agent "..."
 // 5. --proxy-server "http://proxy:8080"
+// 6. --version, hidden --browser, argument-parsing errors
+// 7. Hardening and first-run UX
+// 8. --test-id-attribute
+// 9. --save-storage / --load-storage
+// 10. --viewport-size
+// 11. --device
+// 12. --geolocation
 import { describe, it, expect } from 'vitest';
+import cp from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +22,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_SRC = fs.readFileSync(path.join(__dirname, '../../bin/wdio-codegen.js'), 'utf8');
 const LAUNCHER_SRC = fs.readFileSync(path.join(__dirname, '../../src/launcher.js'), 'utf8');
 const EMULATION_SRC = fs.readFileSync(path.join(__dirname, '../../src/launcher/emulation.js'), 'utf8');
+const VIEWPORT_SRC = fs.existsSync(path.join(__dirname, '../../src/launcher/viewport.js'))
+  ? fs.readFileSync(path.join(__dirname, '../../src/launcher/viewport.js'), 'utf8')
+  : '';
 
 // ── 1. --timezone ─────────────────────────────────────────────────────────────
 describe('--timezone flag', () => {
@@ -95,7 +106,7 @@ describe('--proxy-server flag', () => {
   });
 });
 
-// ── 6. --version and argument-parsing errors ─────────────────────────────────
+// ── 6. --version, hidden --browser, argument-parsing errors ─────────────────
 // parseArgs runs in strict mode at module top level, so an unknown flag throws
 // ERR_PARSE_ARGS_UNKNOWN_OPTION before main() is reached; these guards catch it.
 describe('--version flag', () => {
@@ -107,6 +118,26 @@ describe('--version flag', () => {
   });
   it('version is read from package.json, not hardcoded', () => {
     expect(CLI_SRC).toMatch(/readFileSync\(new URL\('\.\.\/package\.json'/);
+  });
+});
+
+// Only chrome works, so help must not advertise a choice. The parser keeps the flag:
+// dropping it in a patch would break existing scripts that pass `-b chrome`.
+describe('--browser flag is hidden but still accepted', () => {
+  const run = (...args) => cp.spawnSync(process.execPath,
+    [path.join(__dirname, '../../bin/wdio-codegen.js'), ...args], { encoding: 'utf8' });
+
+  it('help does not list --browser', () => {
+    const r = run('--help');
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('--output');
+    expect(r.stdout).not.toMatch(/--browser|-b,/);
+  });
+
+  it('-b chrome still parses', () => {
+    const r = run('-b', 'chrome', '--help');
+    expect(r.status).toBe(0);
+    expect(r.stderr).not.toContain('[wdio-codegen] Error');
   });
 });
 
@@ -181,5 +212,123 @@ describe('start-up tells the user what is happening', () => {
     // The token authenticates the code window; printing the full URL would put a live
     // credential into terminal scrollback and shell history.
     expect(CLI_SRC).not.toMatch(/console\.log\([^)]*codeWindowUrl/);
+  });
+});
+
+// ── 8. --test-id-attribute ───────────────────────────────────────────────────
+describe('--test-id-attribute CLI flag', () => {
+  it('bin/wdio-codegen.js has test-id-attribute option', () => {
+    expect(CLI_SRC).toContain('test-id-attribute');
+  });
+
+  it('CLI help text mentions --test-id-attribute', () => {
+    expect(CLI_SRC).toContain('--test-id-attribute');
+  });
+});
+
+// ── 9. --save-storage / --load-storage ───────────────────────────────────────
+describe('Auth state persistence (--save-storage / --load-storage)', () => {
+  it('bin/wdio-codegen.js has save-storage option', () => {
+    expect(CLI_SRC).toContain('save-storage');
+  });
+
+  it('bin/wdio-codegen.js has load-storage option', () => {
+    expect(CLI_SRC).toContain('load-storage');
+  });
+
+  it('launcher.js implements saveStorage logic', () => {
+    expect(LAUNCHER_SRC).toContain('saveStorage');
+  });
+
+  it('launcher.js implements loadStorage logic', () => {
+    expect(LAUNCHER_SRC).toContain('loadStorage');
+  });
+});
+
+// ── 10. --viewport-size ──────────────────────────────────────────────────────
+describe('--viewport-size CLI flag', () => {
+  it('bin/wdio-codegen.js has viewport-size option', () => {
+    expect(CLI_SRC).toMatch(/['"]viewport-size['"]/);
+  });
+
+  it('launcher.js accepts viewportSize parameter', () => {
+    expect(LAUNCHER_SRC).toMatch(/viewportSize/);
+  });
+
+  it('launcher applies viewport via Puppeteer page.setViewport when viewportSize provided', () => {
+    expect(LAUNCHER_SRC + VIEWPORT_SRC).toMatch(/setViewport/);
+  });
+
+  it('viewport-size format WxH is parsed to width and height', () => {
+    // The CLI or launcher must parse "1280x720" → { width: 1280, height: 720 }
+    expect(LAUNCHER_SRC).toMatch(/split.*x|width.*height|(\d+).*x.*(\d+)/i);
+  });
+
+  it('help text mentions --viewport-size', () => {
+    expect(CLI_SRC).toMatch(/viewport-size/);
+  });
+});
+
+// ── 11. --device ─────────────────────────────────────────────────────────────
+describe('--device CLI flag', () => {
+  it('bin/wdio-codegen.js has device option', () => {
+    expect(CLI_SRC).toMatch(/['"]device['"]/);
+  });
+
+  it('launcher.js accepts device parameter', () => {
+    expect(LAUNCHER_SRC).toMatch(/device/i);
+  });
+
+  it('launcher has DEVICES map with iPhone profile', () => {
+    expect(LAUNCHER_SRC + VIEWPORT_SRC).toMatch(/iPhone/i);
+  });
+
+  it('launcher has DEVICES map with iPad profile', () => {
+    expect(LAUNCHER_SRC + VIEWPORT_SRC).toMatch(/iPad/i);
+  });
+
+  it('launcher has DEVICES map with Pixel profile', () => {
+    expect(LAUNCHER_SRC + VIEWPORT_SRC).toMatch(/Pixel/i);
+  });
+
+  it('device profile includes width, height fields', () => {
+    expect(LAUNCHER_SRC).toMatch(/width.*height|height.*width/);
+  });
+
+  it('device profile includes userAgent field', () => {
+    expect(LAUNCHER_SRC).toMatch(/userAgent/);
+  });
+
+  it('launcher applies device emulation via setViewport + setUserAgent', () => {
+    expect(LAUNCHER_SRC + VIEWPORT_SRC).toMatch(/setViewport/);
+    expect(LAUNCHER_SRC + VIEWPORT_SRC).toMatch(/setUserAgent/);
+  });
+
+  it('help text mentions --device', () => {
+    expect(CLI_SRC).toMatch(/--device/);
+  });
+});
+// ── 12. --geolocation ────────────────────────────────────────────────────────
+describe('--geolocation CLI flag', () => {
+  it('bin/wdio-codegen.js has geolocation option', () => {
+    expect(CLI_SRC).toMatch(/['"]geolocation['"]/);
+  });
+
+  it('help text mentions --geolocation', () => {
+    expect(CLI_SRC).toMatch(/--geolocation/);
+  });
+
+  it('launcher.js accepts geolocation parameter', () => {
+    expect(LAUNCHER_SRC).toMatch(/geolocation/i);
+  });
+
+  it('launcher parses lat,lng format', () => {
+    // e.g. "37.7749,-122.4194" → { latitude: 37.7749, longitude: -122.4194 }
+    expect(EMULATION_SRC).toMatch(/latitude|lat/i);
+    expect(EMULATION_SRC).toMatch(/longitude|lng|lon/i);
+  });
+
+  it('launcher sets geolocation via CDP Emulation.setGeolocationOverride', () => {
+    expect(EMULATION_SRC).toMatch(/setGeolocationOverride|Emulation.*[Gg]eolocation|overrideGeolocation/);
   });
 });

@@ -82,6 +82,18 @@ describe('countHeaderLines', () => {
   it('returns 4 for empty lines array', () => {
     expect(countHeaderLines([])).toBe(4);
   });
+
+  it('points at the first recorded line of buildCode output (JS, TS, with and without Key)', () => {
+    // CodePanel highlights line countHeaderLines + i + 1, so this is the contract it relies on.
+    const plain = [line("    await $('button').click();")];
+    const withKey = [line("    await browser.keys([Key.Ctrl, 'a']);")];
+    for (const lines of [plain, withKey]) {
+      for (const lang of ['js', 'ts']) {
+        const out = buildCode(lines, lang).split('\n');
+        expect(out[countHeaderLines(lines, lang)]).toBe(lines[0].text);
+      }
+    }
+  });
 });
 
 describe('buildCode: TS mode', () => {

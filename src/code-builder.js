@@ -2,15 +2,12 @@
  * Returns the number of header lines that `buildCode` produces before the recorded lines.
  * Used by CodePanel to correctly compute CodeMirror line numbers for assert/warn decorations.
  *
- * Without Key import:  globals-import + blank + describe + it  = 4 lines
- * With Key import:     key-import + globals-import + blank + describe + it = 5 lines
- *
  * @param {{ text: string }[]} lines
- * @returns {4 | 5}
+ * @param {'js' | 'ts'} [lang]
+ * @returns {number}
  */
-export function countHeaderLines(lines) {
-  const needsKeyImport = lines.some(l => /\bKey\./.test(l.text));
-  return needsKeyImport ? 5 : 4;
+export function countHeaderLines(lines, lang) {
+  return buildHeader(lines, lang).length;
 }
 
 /**
@@ -34,6 +31,15 @@ export function langFromPath(filePath) {
  * @returns {string} - complete runnable test file
  */
 export function buildCode(lines, lang) {
+  return [
+    ...buildHeader(lines, lang),
+    ...lines.map(l => l.text),
+    '  });',
+    '});',
+  ].join('\n');
+}
+
+function buildHeader(lines, lang) {
   // Include `import { Key }` only when Key.* constants appear in the output.
   const needsKeyImport = lines.some(l => /\bKey\./.test(l.text));
 
@@ -56,12 +62,9 @@ export function buildCode(lines, lang) {
     : `  it('should complete the flow', async () => {`;
 
   return [
-    importLines.join('\n'),
+    ...importLines,
     '',
     `describe('Recorded flow', () => {`,
     itLine,
-    ...lines.map(l => l.text),
-    '  });',
-    '});',
-  ].join('\n');
+  ];
 }

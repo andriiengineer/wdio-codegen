@@ -21,13 +21,13 @@ describe('recorder.source.js: source file with imports', () => {
     expect(fs.existsSync(RECORDER_SOURCE_PATH)).toBe(true);
   });
 
-  it('imports getBestLocator from locator-engine.js (directly or via recorder-modules)', () => {
+  it('imports getLocatorCandidates from locator-engine.js (directly or via recorder-modules)', () => {
     const locatorModule = fs.readFileSync(path.join(ROOT, 'src/recorder-modules/recorder-locator.js'), 'utf8');
     const helpersModule = fs.existsSync(path.join(ROOT, 'src/recorder-modules/recorder-helpers.js'))
       ? fs.readFileSync(path.join(ROOT, 'src/recorder-modules/recorder-helpers.js'), 'utf8') : '';
-    const hasImport = SRC.match(/import[^;]+getBestLocator[^;]+locator-engine/) ||
-      locatorModule.match(/import[^;]+getBestLocator[^;]+locator-engine/) ||
-      helpersModule.match(/import[^;]+getBestLocator[^;]+locator-engine/);
+    const hasImport = SRC.match(/import[^;]+getLocatorCandidates[^;]+locator-engine/) ||
+      locatorModule.match(/import[^;]+getLocatorCandidates[^;]+locator-engine/) ||
+      helpersModule.match(/import[^;]+getLocatorCandidates[^;]+locator-engine/);
     expect(hasImport).toBeTruthy();
   });
 
@@ -102,8 +102,8 @@ describe('recorder.source.js: thin entry point', () => {
 
 // ── 3. recorder.content.js (bundle) still contains everything ─────────────
 describe('recorder.content.js (bundle): still complete', () => {
-  it('bundle contains getBestLocator logic', () => {
-    expect(BUNDLE).toMatch(/getBestLocator/);
+  it('bundle contains getLocatorCandidates logic', () => {
+    expect(BUNDLE).toMatch(/getLocatorCandidates/);
   });
 
   it('bundle contains isUnstableClass logic', () => {

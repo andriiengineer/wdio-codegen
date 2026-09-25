@@ -1,10 +1,10 @@
 // bin/chrome-setup.js
 import cp from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
+import { BROWSER_CACHE_DIR } from '../src/launcher.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ICON_PATH = path.join(__dirname, 'wdio-icon.png');
@@ -70,7 +70,7 @@ export function openCodeWindow(url, debugPort, { codeX, codeY, codeW, codeH } = 
 
   if (bin) {
     // Persistent profile → Chrome caches the favicon so the icon appears reliably
-    const inspectorProfile = path.join(os.homedir(), '.wdio-codegen', 'inspector-profile');
+    const inspectorProfile = path.join(BROWSER_CACHE_DIR, 'inspector-profile');
     fs.mkdirSync(inspectorProfile, { recursive: true });
 
     // Force-disable translate in the Chrome profile's Preferences file.
