@@ -8,7 +8,6 @@ interface State {
   locator: string;
   actionCount: number;
   connected: boolean;
-  browserName: string;
 }
 
 type Action =
@@ -28,7 +27,7 @@ function reducer(state: State, action: Action): State {
     case 'HANDLE_WS': {
       const msg = action.msg;
       if (msg.type === 'init')
-        return { ...state, lines: msg.lines, actionCount: msg.lines.length, connected: true, browserName: msg.browserName ?? 'chrome' };
+        return { ...state, lines: msg.lines, actionCount: msg.lines.length, connected: true };
       if (msg.type === 'line') {
         const newMode = msg.entry.isAssert ? 'recording' : state.mode;
         return {
@@ -59,7 +58,6 @@ const initial: State = {
   locator: '',
   actionCount: 0,
   connected: false,
-  browserName: 'chrome',
 };
 
 /**

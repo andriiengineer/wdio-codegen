@@ -6,15 +6,13 @@ interface Props {
   mode: Mode;
   lang: 'js' | 'ts';
   hasCode: boolean;
-  outputFile?: string;
   onModeChange: (mode: Mode) => void;
   onLangChange: (lang: 'js' | 'ts') => void;
   onCopy: () => void;
   onClear: () => void;
-  onSave: () => void;
 }
 
-export function Toolbar({ mode, lang, hasCode, outputFile, onModeChange, onLangChange, onCopy, onClear, onSave }: Props) {
+export function Toolbar({ mode, lang, hasCode, onModeChange, onLangChange, onCopy, onClear }: Props) {
   const isRecording = mode === 'recording';
   const isPaused = mode === 'standby';
 
@@ -79,12 +77,6 @@ export function Toolbar({ mode, lang, hasCode, outputFile, onModeChange, onLangC
       <button className="tb-btn" onClick={onCopy} disabled={!hasCode} title="Copy all code">
         📋 Copy
       </button>
-
-      {outputFile && (
-        <button className="tb-btn" onClick={() => onSave()} disabled={!hasCode} title={`Save to ${outputFile} (⌘S)`}>
-          💾 Save
-        </button>
-      )}
 
       <button className="tb-btn" onClick={onClear} disabled={!hasCode} title="Clear recording">
         🗑 Clear

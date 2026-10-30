@@ -9,7 +9,8 @@ import { applyEmulation } from './launcher/emulation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RECORDER_PATH = path.join(__dirname, 'recorder.content.js');
-const ICON_PATH = path.join(__dirname, '..', 'bin', 'wdio-icon.png');
+const TYPED_TRANSITIONS = new Set(['typed', 'auto_bookmark', 'generated']);
+const PAUSE_PASSTHROUGH = new Set(['control:pause', 'control:resume', 'clear', 'pick']);
 // Where WebdriverIO keeps the Chrome for Testing build and the matching chromedriver.
 // Same location the README documents; overridable for CI.
 export const BROWSER_CACHE_DIR = process.env.WDIO_CODEGEN_CACHE_DIR
@@ -18,8 +19,6 @@ export const BROWSER_CACHE_DIR = process.env.WDIO_CODEGEN_CACHE_DIR
 
 export async function createLauncher({
   url,
-  port,
-  browser: browserName = 'chrome',
   testIdAttribute,
   saveStorage,
   loadStorage,
@@ -32,6 +31,7 @@ export async function createLauncher({
   userAgent,
   proxyServer,
   windowBounds,
+  chromeArgs = [],
   addEvent,
   onClosed,
 } = {}) {
@@ -44,9 +44,8 @@ export async function createLauncher({
   let tempProfileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wdio-codegen-profile-'));
 
   const capabilities = {
-    browserName,
-    ...(browserName === 'chrome' && {
-      'goog:chromeOptions': {
+    browserName: 'chrome',
+    'goog:chromeOptions': {
         args: [
           `--user-data-dir=${tempProfileDir}`,
           '--use-mock-keychain',
@@ -83,6 +82,7 @@ export async function createLauncher({
           ...(proxyServer ? [`--proxy-server=${proxyServer}`] : []),
           ...(windowBounds ? [`--window-size=${windowBounds.width},${windowBounds.height}`] : []),
           ...(windowBounds ? [`--window-position=${windowBounds.x},${windowBounds.y}`] : []),
+          ...chromeArgs,
         ],
         prefs: {
           'profile.default_content_setting_values.notifications': 1,
@@ -96,8 +96,7 @@ export async function createLauncher({
           'credentials_enable_service': false,
           'profile.password_manager_enabled': false,
         },
-      },
-    }),
+    },
   };
 
   let driver;
@@ -111,8 +110,10 @@ export async function createLauncher({
     });
   } catch (err) {
     try { fs.rmSync(tempProfileDir, { recursive: true, force: true }); } catch {}
-    throw new Error(`Failed to launch ${browserName}: ${err.message}`);
+    throw new Error(`Failed to launch chrome: ${err.message}`);
   }
+
+  driver.on('dialog', () => {});
 
   // Chrome ignores --window-size when launched via chromedriver. Apply the bounds
   // explicitly via WebDriver after the session is live so the browser actually
@@ -135,16 +136,44 @@ export async function createLauncher({
 
   const pptr = await driver.getPuppeteer();
 
-  function handleRecorderEvent(json) {
-    try {
-      const event = typeof json === 'string' ? JSON.parse(json) : json;
-      addEvent?.(event);
-    } catch {}
+  let paused = false;
+  let missedUrl = null;
+  let queue = Promise.resolve();
+
+  function resume() {
+    paused = false;
+    if (missedUrl) addEvent?.({ type: 'navigate', url: missedUrl, typed: true });
+    missedUrl = null;
+  }
+
+  function record(event) {
+    if (event.type === 'control:pause') paused = true;
+    if (event.type === 'control:resume') resume();
+    if (paused && !PAUSE_PASSTHROUGH.has(event.type)) {
+      if (event.type === 'navigate') {
+        missedUrl = event.url;
+        setMode('pause');
+      }
+      return;
+    }
+    addEvent?.(event);
   }
 
   async function setupPage(page) {
+    const deviceProfile = await applyViewport(page, { device, viewportSize });
+    await applyEmulation(page, { geolocation, timezone, colorScheme, userAgent, deviceProfile });
     try {
-      await page.exposeFunction('__wdioRecord', handleRecorderEvent);
+      const cdp = await page.createCDPSession();
+      await page.exposeFunction('__wdioRecord', (json) => {
+        queue = queue.then(async () => {
+          const event = JSON.parse(json);
+          if (event.type === 'navigate' && !event.spa) {
+            const { currentIndex, entries } = await cdp.send('Page.getNavigationHistory');
+            event.typed = TYPED_TRANSITIONS.has(entries[currentIndex]?.transitionType);
+          }
+          record(event);
+        }).catch(() => {});
+      });
     } catch {
       // Already exposed on this page (e.g. re-used context), safe to ignore
     }
@@ -156,11 +185,27 @@ export async function createLauncher({
   }
 
   const initialPage = (await pptr.pages())[0];
+
+  if (loadStorage) {
+    try {
+      const storage = JSON.parse(fs.readFileSync(loadStorage, 'utf8'));
+      // Cookies and localStorage can only be set on a page of their origin.
+      await driver.url(new URL(url).origin);
+      for (const cookie of storage.cookies ?? []) {
+        await driver.setCookies(cookie).catch(() => {});
+      }
+      if (storage.localStorage) {
+        await initialPage.evaluate((ls) => {
+          for (const [k, v] of Object.entries(ls)) localStorage.setItem(k, v);
+        }, storage.localStorage);
+      }
+    } catch (err) {
+      console.warn(`[wdio-codegen] Warning: could not load storage from ${loadStorage}: ${err.message}`);
+    }
+    await driver.url('about:blank');
+  }
+
   await setupPage(initialPage);
-
-  const deviceProfile = await applyViewport(initialPage, { device, viewportSize });
-
-  await applyEmulation(initialPage, { geolocation, timezone, colorScheme, userAgent, deviceProfile });
 
   pptr.on('targetcreated', async (target) => {
     if (target.type() !== 'page') return;
@@ -176,26 +221,6 @@ export async function createLauncher({
       }
     } catch {}
   });
-
-  if (loadStorage) {
-    try {
-      const storage = JSON.parse(fs.readFileSync(loadStorage, 'utf8'));
-      if (storage.cookies?.length) {
-        await driver.setCookies(storage.cookies);
-      }
-      if (storage.localStorage) {
-        const page = (await pptr.pages())[0];
-        // Navigate to origin first so localStorage.setItem is allowed (same-origin policy)
-        const origin = new URL(url).origin;
-        await driver.url(origin);
-        await page.evaluate((ls) => {
-          for (const [k, v] of Object.entries(ls)) localStorage.setItem(k, v);
-        }, storage.localStorage);
-      }
-    } catch (err) {
-      console.warn(`[wdio-codegen] Warning: could not load storage from ${loadStorage}: ${err.message}`);
-    }
-  }
 
   await driver.url(url);
 
@@ -242,6 +267,8 @@ export async function createLauncher({
   }
 
   async function setMode(cmd) {
+    if (cmd === 'pause') paused = true;
+    if (cmd === 'recording' && paused) resume();
     try {
       const pages = await pptr.pages();
       for (const page of pages) {
@@ -255,9 +282,14 @@ export async function createLauncher({
     try {
       const pages = await pptr.pages();
       const page = pages[0];
-      let cookies = [];
+      let cookies;
       let localStorageData = {};
-      try { cookies = await driver.getCookies(); } catch {}
+      try {
+        cookies = await driver.getCookies();
+      } catch {
+        console.warn(`[wdio-codegen] Warning: browser already closed, ${saveStorage} not updated. Stop with Ctrl+C to save auth state.`);
+        return;
+      }
       try {
         localStorageData = await page.evaluate(() => {
           const out = {};

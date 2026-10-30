@@ -14,7 +14,7 @@ export interface LineEntry {
 }
 
 export type WsMessage =
-  | { type: 'init'; lines: LineEntry[]; browserName: string }
+  | { type: 'init'; lines: LineEntry[] }
   | { type: 'line'; entry: LineEntry }
   | { type: 'clear' }
   | { type: 'pick'; locator: string }

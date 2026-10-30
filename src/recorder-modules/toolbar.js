@@ -112,7 +112,17 @@ export function createToolbar({ onPause, onResume, onClear, onPick, onAssertMode
   clearBtn.type = 'button';
   clearBtn.style.cssText = _btnStyle('transparent', '#e2e8f0');
   clearBtn.textContent = '✕';
-  clearBtn.onclick = (e) => { e.stopPropagation(); onClear(); };
+  clearBtn.title = 'Clear recording';
+  clearBtn.onclick = (e) => {
+    e.stopPropagation();
+    if (clearBtn.textContent === '✕') {
+      clearBtn.textContent = 'Clear?';
+      setTimeout(() => { clearBtn.textContent = '✕'; }, 2000);
+      return;
+    }
+    clearBtn.textContent = '✕';
+    onClear();
+  };
   toolbar.appendChild(clearBtn);
 
   const hoverLocator = document.createElement('span');
@@ -120,7 +130,7 @@ export function createToolbar({ onPause, onResume, onClear, onPick, onAssertMode
   hoverLocator.style.cssText = [
     'font:10px monospace',
     'color:#38bdf8',
-    'max-width:280px',
+    'width:280px',
     'overflow:hidden',
     'text-overflow:ellipsis',
     'white-space:nowrap',

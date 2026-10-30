@@ -123,24 +123,6 @@ describe('--version flag', () => {
 
 // Only chrome works, so help must not advertise a choice. The parser keeps the flag:
 // dropping it in a patch would break existing scripts that pass `-b chrome`.
-describe('--browser flag is hidden but still accepted', () => {
-  const run = (...args) => cp.spawnSync(process.execPath,
-    [path.join(__dirname, '../../bin/wdio-codegen.js'), ...args], { encoding: 'utf8' });
-
-  it('help does not list --browser', () => {
-    const r = run('--help');
-    expect(r.status).toBe(0);
-    expect(r.stdout).toContain('--output');
-    expect(r.stdout).not.toMatch(/--browser|-b,/);
-  });
-
-  it('-b chrome still parses', () => {
-    const r = run('-b', 'chrome', '--help');
-    expect(r.status).toBe(0);
-    expect(r.stderr).not.toContain('[wdio-codegen] Error');
-  });
-});
-
 describe('argument parsing errors stay readable', () => {
   it('parseArgs is wrapped in try/catch', () => {
     expect(CLI_SRC).toMatch(/try\s*\{[\s\S]*?parseArgs\(\{[\s\S]*?\}\s*catch\s*\(/);

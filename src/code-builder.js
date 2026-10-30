@@ -33,7 +33,7 @@ export function langFromPath(filePath) {
 export function buildCode(lines, lang) {
   return [
     ...buildHeader(lines, lang),
-    ...lines.map(l => l.text),
+    ...lines.map(l => (l.warn && /\$\(/.test(l.text) ? `${l.text} // ⚠ fragile locator` : l.text)),
     '  });',
     '});',
   ].join('\n');

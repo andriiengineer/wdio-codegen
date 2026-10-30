@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.3] - 2026-10-30
+
+### Fixed
+- Dialogs: WebdriverIO 9 dismissed every `alert`/`confirm`/`prompt` during recording and
+  replay. They now stay open for the user, and the test registers a one-shot
+  `browser.on('dialog')` handler before the step that opens the dialog.
+- A click that navigates (a link, a submit button) is no longer lost, and a buffered click
+  is no longer emitted after the typing, keys or new tab it caused.
+- Navigation caused by a click no longer adds `browser.url()`, which reloaded SPAs and broke
+  new-tab flows. Only the start page and typed URLs are recorded.
+- A click on a checkbox `<label>` is recorded once instead of twice.
+- The last-resort CSS path is verified to match only the recorded element, and fragile
+  locators are marked `// ⚠ fragile locator` in the generated file.
+- `--test-id-attribute` is honoured.
+- Pause survives navigation and new tabs, and Record in the code window resumes it.
+- Enter and Escape work in the assertion forms; text assertions are prefilled with the full
+  element text.
+- `--load-storage` sets cookies on the target origin; `--save-storage` no longer overwrites
+  the file with empty data when the browser window was closed.
+- Device and emulation flags apply to new tabs.
+- Cmd on macOS is recorded as the cross-platform `Key.Ctrl`.
+- Caret and editing keys inside text fields are no longer recorded next to `setValue()`.
+- The code window highlights `aria/…` and `tag=text` locators.
+- The context menu stays inside the viewport; the toolbar ✕ asks for a second click.
+- Windows: correct screen size, and Edge is used for the code window when Chrome is missing.
+
+### Removed
+- The Save button, ⌘S and the `/save` endpoint: `--output` already writes the file live.
+- The hidden `--browser` flag.
+
 ## [1.0.2] - 2026-09-26
 
 ### Fixed

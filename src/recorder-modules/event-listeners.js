@@ -19,6 +19,8 @@ function targetOf(e) {
   return e.composedPath().find(n => n instanceof Element) ?? e.target;
 }
 
+const CARET_KEYS = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Home', 'End'];
+
 const CLICKABLE = 'button, a, [role="button"], input[type="submit"], input[type="button"]';
 
 // Nearest clickable ancestor, stepping out of shadow roots to their hosts (never into a slot).
@@ -43,11 +45,12 @@ export function attachEventListeners({
   getInputBuf,
   setInputBuf,
   getFocusValues,
-  setClickBuf,
+  bufferClick,
   resolveTextAssertLocator,
 }) {
   let hoverTimer = null;
   let dragSourceEl = null;
+  let labelControl = null;
 
   // A shadow control without a stable locator is clicked via its host, if the host's centre lands on it.
   function clickLocator(el) {
@@ -66,8 +69,9 @@ export function attachEventListeners({
 
   document.addEventListener('click', (e) => {
     const el = clickTargetOf(e);
-    if (!el || el === document.body) return;
+    if (!el || el === document.body || el === document.documentElement) return;
     if (el.closest('[id^="__wdio_"]')) return;
+    if (el !== labelControl) labelControl = null;
     // checkboxes/radios are recorded via the change event, which does not leave a shadow root
     if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio') && el.getRootNode() === document) return;
 
@@ -114,14 +118,12 @@ export function attachEventListeners({
       return;
     }
 
+    if (el.tagName === 'LABEL' && ['checkbox', 'radio'].includes(el.control?.type)) labelControl = el.control;
     // 300 ms buffer: a second click cancels the single and becomes dblclick.
     const { locator, warn } = clickLocator(el);
     const payload = { type: 'click', locator, _warn: warn };
-    onCancelClick();
-    setClickBuf({
-      payload,
-      timer: setTimeout(() => { setClickBuf(null); send(payload); }, 300),
-    });
+    if (el.closest('a[href]') || (el.form && el.type === 'submit')) send(payload);
+    else bufferClick(payload);
   }, true);
 
   document.addEventListener('dblclick', (e) => {
@@ -136,6 +138,7 @@ export function attachEventListeners({
   document.addEventListener('change', (e) => {
     const el = targetOf(e);
     if (el.closest('[id^="__wdio_"]')) return;
+    if (el === labelControl) { labelControl = null; return; }
     if (el.tagName === 'SELECT') {
       const { locator, warn } = getUniqueLocator(el);
       const opt = el.options[el.selectedIndex];
@@ -210,9 +213,10 @@ export function attachEventListeners({
       // Combination key: flush pending text first so setValue precedes keys() in output.
       onFlushInput();
       const keys = [];
-      if (e.ctrlKey)  keys.push('Control');
+      if (isMac ? e.metaKey : e.ctrlKey) keys.push('Ctrl');
+      if (isMac && e.ctrlKey) keys.push('Control');
       if (e.altKey)   keys.push('Alt');
-      if (e.metaKey)  keys.push('Meta');
+      if (!isMac && e.metaKey) keys.push('Meta');
       if (hasShift)   keys.push('Shift');
       keys.push(e.key);
       send({ type: 'keys', keys }); // array format → browser.keys([Key.Ctrl, 'a'])
@@ -224,6 +228,8 @@ export function attachEventListeners({
     const SPECIAL = ['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
       'Backspace', 'Delete', 'PageUp', 'PageDown', 'Home', 'End',
       'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12'];
+    const t = targetOf(e);
+    if (CARET_KEYS.includes(e.key) && _isRecordableInput(t) && (t.isContentEditable ? t.innerText.trim() : t.value)) return;
     if (SPECIAL.includes(e.key)) {
       // Flush pending setValue BEFORE keys that can move focus.
       if (['Tab', 'Enter', 'Escape'].includes(e.key)) onFlushInput();
@@ -284,12 +290,13 @@ export function attachEventListeners({
     e.preventDefault();
     const el = targetOf(e);
     const { locator, warn } = getUniqueLocator(el);
-    const text = (el.innerText || '').trim().split('\n')[0].trim().slice(0, 60);
+    const text = (el.innerText || '').trim();
+    const textLoc = resolveTextAssertLocator(el, locator, warn, text);
     const isCheckable = el.type === 'checkbox' || el.type === 'radio';
     const isFormEl    = ['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName);
     const currentValue = isFormEl ? (el.value ?? '') : '';
     showContextMenu({
-      x: e.clientX, y: e.clientY, locator, warn, text,
+      x: e.clientX, y: e.clientY, locator, warn, text, textLoc,
       isFormEl, isCheckable, currentValue,
       currentUrl: location.pathname,
       pageTitle: document.title,

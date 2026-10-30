@@ -26,9 +26,9 @@ const dirNames = (rel) =>
 
 // Commands that live in the WebDriver protocol rather than in commands/browser/.
 const PROTOCOL_COMMANDS = new Set([
-  'closeWindow', 'acceptAlert', 'dismissAlert', 'sendAlertText',
-  'getWindowHandles', 'switchToWindow', 'setCookies', 'getCookies',
+  'closeWindow', 'getWindowHandles', 'switchToWindow', 'setCookies', 'getCookies',
 ]);
+const EVENT_METHODS = new Set(['on', 'off']);
 
 /** Method names called on an element locator: `${L(...)}.name(` */
 function elementCallsIn(src) {
@@ -67,7 +67,7 @@ describe('generated code uses real WebdriverIO API', () => {
     const real = dirNames('browser');
     const used = browserCallsIn(CODEGEN_SRC);
     expect(used.size).toBeGreaterThan(0);
-    expect([...used].filter(c => !real.has(c) && !PROTOCOL_COMMANDS.has(c))).toEqual([]);
+    expect([...used].filter(c => !real.has(c) && !PROTOCOL_COMMANDS.has(c) && !EVENT_METHODS.has(c))).toEqual([]);
   });
 
   it('every matcher exists in expect-webdriverio', async () => {

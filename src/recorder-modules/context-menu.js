@@ -8,10 +8,10 @@ function _removeMenu() {
  * Renders the right-click assertion context menu at (x, y).
  * All action callbacks are injected: the module knows only DOM.
  *
- * @param {{ x: number, y: number, locator: string, warn: boolean, text: string, isFormEl: boolean, isCheckable: boolean, currentValue: string, currentUrl: string, pageTitle: string, send: Function, showTextAssertForm: Function, showAttrAssertForm: Function }} opts
+ * @param {{ x: number, y: number, locator: string, warn: boolean, text: string, textLoc: { locator: string, warn: boolean }, isFormEl: boolean, isCheckable: boolean, currentValue: string, currentUrl: string, pageTitle: string, send: Function, showTextAssertForm: Function, showAttrAssertForm: Function }} opts
  */
 export function showContextMenu({
-  x, y, locator, warn, text,
+  x, y, locator, warn, text, textLoc,
   isFormEl, isCheckable, currentValue, currentUrl, pageTitle,
   send, showTextAssertForm, showAttrAssertForm,
 }) {
@@ -34,9 +34,9 @@ export function showContextMenu({
     ['Hover over element',      () => send({ type: 'moveTo', locator, _warn: warn })],
     ['Element is visible',      () => send({ type: 'assert:toBeDisplayed', locator, _warn: warn })],
     ['Element is NOT visible',  () => send({ type: 'assert:not:toBeDisplayed', locator, _warn: warn })],
-    ['Text equals…',            () => { _removeMenu(); showTextAssertForm({ locator, text, warn, eventType: 'assert:toHaveText' }); }],
-    ['Text contains…',          () => { _removeMenu(); showTextAssertForm({ locator, text, warn, eventType: 'assert:toHaveTextContaining' }); }],
-    ['Text is NOT…',            () => { _removeMenu(); showTextAssertForm({ locator, text, warn, eventType: 'assert:not:toHaveText' }); }],
+    ['Text equals…',            () => { _removeMenu(); showTextAssertForm({ ...textLoc, text, eventType: 'assert:toHaveText' }); }],
+    ['Text contains…',          () => { _removeMenu(); showTextAssertForm({ ...textLoc, text, eventType: 'assert:toHaveTextContaining' }); }],
+    ['Text is NOT…',            () => { _removeMenu(); showTextAssertForm({ ...textLoc, text, eventType: 'assert:not:toHaveText' }); }],
     ...(isFormEl ? [
       ['Value equals…',         () => { _removeMenu(); showTextAssertForm({ locator, text: currentValue, warn, eventType: 'assert:toHaveValue', title: 'Assert Value' }); }],
     ] : []),
@@ -81,5 +81,7 @@ export function showContextMenu({
   menu.appendChild(footer);
 
   document.body.appendChild(menu);
+  menu.style.top = `${Math.max(0, Math.min(y, innerHeight - menu.offsetHeight))}px`;
+  menu.style.left = `${Math.max(0, Math.min(x, innerWidth - menu.offsetWidth))}px`;
   document.addEventListener('click', _removeMenu, { once: true });
 }

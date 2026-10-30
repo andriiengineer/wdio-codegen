@@ -73,7 +73,7 @@ function buildLine(event) {
       // Single key:           event.key  is a string,  e.g. 'Enter'
       // WDIO uses Key.Ctrl (cross-platform: Cmd on Mac, Ctrl on Win/Linux).
       if (event.keys) {
-        const MODIFIER_MAP = { Control: 'Key.Ctrl', Meta: 'Key.Meta', Alt: 'Key.Alt', Shift: 'Key.Shift' };
+        const MODIFIER_MAP = { Ctrl: 'Key.Ctrl', Control: 'Key.Control', Meta: 'Key.Meta', Alt: 'Key.Alt', Shift: 'Key.Shift' };
         const parts = event.keys.map(k => MODIFIER_MAP[k] ?? `'${escapeStr(k)}'`);
         return `    await browser.keys([${parts.join(', ')}]);`;
       }
@@ -119,11 +119,11 @@ function buildLine(event) {
       return `    await expect(${L(event.locator)}).not.toBeChecked();`;
     case 'dialog:alert':
     case 'dialog:accept':
-      return `    await browser.acceptAlert();`;
+      return onDialog('dialog.accept()');
     case 'dialog:dismiss':
-      return `    await browser.dismissAlert();`;
+      return onDialog('dialog.dismiss()');
     case 'dialog:prompt':
-      return `    await browser.sendAlertText('${escapeStr(event.value)}');\n    await browser.acceptAlert();`;
+      return onDialog(`dialog.accept('${escapeStr(event.value)}')`);
     case 'uploadFile':
       // browser.uploadFile() transfers the file to the remote WebDriver machine and
       // returns the remote path that setValue() must receive.
@@ -138,6 +138,13 @@ function buildLine(event) {
     default:
       return null;
   }
+}
+
+function onDialog(answer) {
+  return `    browser.on('dialog', function onDialog(dialog) {\n`
+    + `      browser.off('dialog', onDialog);\n`
+    + `      return ${answer};\n`
+    + `    });`;
 }
 
 /**

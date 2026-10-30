@@ -29,16 +29,6 @@ describe('Read-only CodeMirror', () => {
 });
 
 // ── 2. Locator candidates in Sidebar ─────────────────────────────────────────
-describe('Alternative locator candidates in Sidebar', () => {
-  it('Sidebar imports getLocatorCandidates or receives candidates prop', () => {
-    expect(SIDEBAR).toMatch(/candidates|getLocatorCandidates|alternativ/i);
-  });
-
-  it('Sidebar renders locator candidates list', () => {
-    expect(SIDEBAR).toMatch(/candidates\.map|candidateList|alt.*locator/i);
-  });
-});
-
 // ── 3. Semantic Log tab ──────────────────────────────────────────────────────
 describe('Semantic Log tab (human-readable labels)', () => {
   it('Sidebar LogTab uses label field (not just raw code text)', () => {

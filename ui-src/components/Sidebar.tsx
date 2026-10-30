@@ -1,24 +1,16 @@
 import React, { useMemo, useState } from 'react';
 import type { LineEntry } from '../types';
-import { getLocatorCandidates } from '../../src/locator-engine.js';
 import './Sidebar.css';
 
 interface Props {
   locator: string;
   lines: LineEntry[];
-  elementInfo?: Parameters<typeof getLocatorCandidates>[0] | null;
   onLocatorChange: (sel: string) => void;
   locatorInputRef?: React.Ref<HTMLInputElement>;
 }
 
-export function Sidebar({ locator, lines, elementInfo, onLocatorChange, locatorInputRef }: Props) {
+export function Sidebar({ locator, lines, onLocatorChange, locatorInputRef }: Props) {
   const [tab, setTab] = useState<'locator' | 'log'>('locator');
-
-  // Candidate computation is non-trivial: only redo it when the source element changes.
-  const candidates = useMemo(
-    () => (elementInfo ? getLocatorCandidates(elementInfo) : []),
-    [elementInfo],
-  );
 
   return (
     <div className="sidebar">
@@ -41,7 +33,6 @@ export function Sidebar({ locator, lines, elementInfo, onLocatorChange, locatorI
         {tab === 'locator' ? (
           <LocatorTab
             locator={locator}
-            candidates={candidates}
             onLocatorChange={onLocatorChange}
             inputRef={locatorInputRef}
           />
@@ -53,13 +44,10 @@ export function Sidebar({ locator, lines, elementInfo, onLocatorChange, locatorI
   );
 }
 
-interface Candidate { locator: string; warn: boolean; label: string; }
-
 function LocatorTab({
-  locator, candidates, onLocatorChange, inputRef,
+  locator, onLocatorChange, inputRef,
 }: {
   locator: string;
-  candidates: Candidate[];
   onLocatorChange: (s: string) => void;
   inputRef?: React.Ref<HTMLInputElement>;
 }) {
@@ -78,28 +66,6 @@ function LocatorTab({
       <div className="sidebar-label" style={{ marginTop: 8 }}>
         Type a selector to highlight matching elements on the target page
       </div>
-
-      {candidates.length > 1 && (
-        <>
-          <div className="sidebar-label" style={{ marginTop: 12 }}>
-            Alternative locators
-          </div>
-          <div className="candidateList">
-            {candidates.map((c, i) => (
-              <div
-                key={i}
-                className={`candidate-item${c.warn ? ' warn' : ''}`}
-                title={c.label}
-                onClick={() => onLocatorChange(c.locator)}
-                style={{ cursor: 'pointer' }}
-              >
-                <span className="candidate-label">{c.label}</span>
-                <span className="candidate-locator">{c.locator}</span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
     </>
   );
 }

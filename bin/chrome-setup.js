@@ -24,6 +24,8 @@ export function findChromeBin() {
       `${process.env.LOCALAPPDATA}\\Google\\Chrome\\Application\\chrome.exe`,
       `${process.env.PROGRAMFILES}\\Google\\Chrome\\Application\\chrome.exe`,
       `${process.env['PROGRAMFILES(X86)']}\\Google\\Chrome\\Application\\chrome.exe`,
+      `${process.env['PROGRAMFILES(X86)']}\\Microsoft\\Edge\\Application\\msedge.exe`,
+      `${process.env.PROGRAMFILES}\\Microsoft\\Edge\\Application\\msedge.exe`,
     ];
     return candidates.find(p => p && fs.existsSync(p)) ?? null;
   }
@@ -48,7 +50,7 @@ export function getScreenSize() {
       if (w && h) return { width: w, height: h };
     }
     if (process.platform === 'win32') {
-      const r = cp.spawnSync('powershell', ['-command', '[System.Windows.Forms.Screen]::PrimaryScreen.Bounds | Select Width,Height | ConvertTo-Json'], { encoding: 'utf8' });
+      const r = cp.spawnSync('powershell', ['-command', 'Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Screen]::PrimaryScreen.Bounds | Select Width,Height | ConvertTo-Json'], { encoding: 'utf8' });
       const { Width, Height } = JSON.parse(r.stdout.trim());
       if (Width) return { width: Width, height: Height };
     }
@@ -103,7 +105,7 @@ export function openCodeWindow(url, debugPort, { codeX, codeY, codeW, codeH } = 
   } else if (process.platform === 'darwin') {
     cp.spawn('open', [url], { detached: true, stdio: 'ignore' }).unref();
   } else if (process.platform === 'win32') {
-    cp.spawn('cmd.exe', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' }).unref();
+    cp.spawn('rundll32', ['url.dll,FileProtocolHandler', url], { detached: true, stdio: 'ignore' }).unref();
   } else {
     cp.spawn('xdg-open', [url], { detached: true, stdio: 'ignore' }).unref();
   }

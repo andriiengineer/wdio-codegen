@@ -48,13 +48,13 @@ no longer used and can be deleted.
 | Action | Generated code |
 |---|---|
 | Single key | `await browser.keys('Enter')` |
-| Modifier combo | `await browser.keys([Key.Ctrl, 'a'])`. `Control` / `Meta` / `Alt` / `Shift` map to cross-platform `Key.*` constants |
+| Modifier combo | `await browser.keys([Key.Ctrl, 'a'])`. Cmd on macOS and Ctrl elsewhere both become the cross-platform `Key.Ctrl` |
 
 ### Navigation & windows
 
 | Action | Generated code |
 |---|---|
-| Navigate | `await browser.url('https://...')` |
+| Navigate | `await browser.url('https://...')` for the start page and URLs typed into the address bar. Navigation caused by a click is replayed by the click itself |
 | New tab / window | `await browser.switchWindow('https://...')` |
 | Close tab / window | `await browser.closeWindow()` |
 | Action inside an iframe | `await browser.switchFrame($('iframe'))` … `await browser.switchFrame(null)`. The action is wrapped in a frame switch, because `$('iframe').$('#el')` does not cross the document boundary |
@@ -63,9 +63,12 @@ no longer used and can be deleted.
 
 | Action | Generated code |
 |---|---|
-| Alert / confirm OK | `await browser.acceptAlert()` |
-| Confirm cancel | `await browser.dismissAlert()` |
-| Prompt with text | `await browser.sendAlertText('...'); await browser.acceptAlert()` |
+| Alert / confirm OK | `browser.on('dialog', …)` handler with `dialog.accept()`, placed before the step that opens the dialog |
+| Confirm cancel | The same handler with `dialog.dismiss()` |
+| Prompt with text | The same handler with `dialog.accept('...')` |
+
+WebdriverIO 9 dismisses every dialog that has no `dialog` listener, so `acceptAlert()` after the
+click would find nothing to accept. Each generated handler removes itself after one dialog.
 
 ### Files
 
@@ -105,7 +108,7 @@ Locators are chosen in priority order:
 3. `aria/Label`: ARIA labels
 4. `input[placeholder]`, `img[alt]`, `[name]`: semantic attributes
 5. `button=Text`, `a=Link text`: visible text for interactive elements
-6. XPath: last resort (marked with ⚠ warning)
+6. CSS path: last resort, verified to match only the recorded element and marked `// ⚠ fragile locator`
 
 ---
 

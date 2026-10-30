@@ -6,14 +6,14 @@
 export function attachDialogOverrides(send) {
   const _origAlert = window.alert;
   window.alert = function(msg) {
-    send({ type: 'dialog:alert', message: String(msg ?? ''), _warn: true });
+    send({ type: 'dialog:alert', message: String(msg ?? '') });
     return _origAlert.call(this, msg);
   };
 
   const _origConfirm = window.confirm;
   window.confirm = function(msg) {
     const result = _origConfirm.call(this, msg);
-    send({ type: result ? 'dialog:accept' : 'dialog:dismiss', message: String(msg ?? ''), _warn: true });
+    send({ type: result ? 'dialog:accept' : 'dialog:dismiss', message: String(msg ?? '') });
     return result;
   };
 
@@ -24,7 +24,7 @@ export function attachDialogOverrides(send) {
     if (result !== null) {
       send({ type: 'dialog:prompt', message: String(msg ?? ''), value: result });
     } else {
-      send({ type: 'dialog:dismiss', message: String(msg ?? ''), _warn: false });
+      send({ type: 'dialog:dismiss', message: String(msg ?? '') });
     }
     return result;
   };
@@ -39,11 +39,11 @@ export function attachSPANavigation(send, flushInput, flushClick) {
     flushInput(); // commit pending setValue before navigation
     flushClick(); // commit buffered click before navigation
     _origPushState(...args);
-    window.__wdioRecord?.(JSON.stringify({ type: 'navigate', url: location.href }));
+    window.__wdioRecord?.(JSON.stringify({ type: 'navigate', url: location.href, spa: true }));
   };
   window.addEventListener('popstate', () => {
     flushInput();
     flushClick();
-    window.__wdioRecord?.(JSON.stringify({ type: 'navigate', url: location.href }));
+    window.__wdioRecord?.(JSON.stringify({ type: 'navigate', url: location.href, spa: true }));
   });
 }

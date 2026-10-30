@@ -4,7 +4,7 @@ import { javascript } from '@codemirror/lang-javascript';
 import { Decoration, ViewPlugin } from '@codemirror/view';
 import { RangeSetBuilder } from '@codemirror/state';
 import type { LineEntry } from '../types';
-import { buildCode as buildCodeCore, countHeaderLines } from '../../src/code-builder.js';
+import { buildCode, countHeaderLines } from '../../src/code-builder.js';
 
 const lightTheme = EditorView.theme({
   '&': { background: '#ffffff', color: '#1a1a1a', height: '100%' },
@@ -14,11 +14,6 @@ const lightTheme = EditorView.theme({
   '.cm-warn-line': { borderLeft: '3px solid #ff9800', background: '#fff3e0' },
   '.cm-scroller': { overflow: 'auto' },
 }, { dark: false });
-
-function buildCode(lines: LineEntry[], lang: 'js' | 'ts'): string {
-  // Shared with file-writer so the UI and the saved file generate identical code.
-  return buildCodeCore(lines, lang);
-}
 
 function makeAssertPlugin(assertLineNums: Set<number>, warnLineNums: Set<number>) {
   return ViewPlugin.fromClass(class {
@@ -90,4 +85,3 @@ export function CodePanel({ lines, lang }: Props) {
   );
 }
 
-export { buildCode };

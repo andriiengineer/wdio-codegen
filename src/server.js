@@ -19,11 +19,11 @@ function safeEqual(a, b) {
   return crypto.timingSafeEqual(ba, bb);
 }
 
-export function createServer({ port = 9323, browserName = 'chrome', token, onEvent, onHighlight, onSetMode } = {}) {
+export function createServer({ port = 9323, token, onEvent, onHighlight, onSetMode } = {}) {
   const lines = [];
 
-  // SECURITY: loopback is not a trust boundary. Any local page can POST here, and
-  // WebSocket is not covered by the same-origin policy, so the token is required.
+  // SECURITY: loopback is not a trust boundary. WebSocket is not covered by the
+  // same-origin policy, so the token is required.
   const authToken = token ?? crypto.randomBytes(32).toString('hex');
 
   // The code window is served by this very server, so its Origin is fixed and known.
@@ -32,49 +32,11 @@ export function createServer({ port = 9323, browserName = 'chrome', token, onEve
     `http://127.0.0.1:${port}`,
   ]);
 
-  // A missing Origin is rejected, not allowed: browsers always send one on POST and on
-  // WS upgrade, so the gap would only serve a non-browser client.
+  // A missing Origin is rejected, not allowed: browsers always send one on WS upgrade,
+  // so the gap would only serve a non-browser client.
   const originAllowed = (origin) => typeof origin === 'string' && ALLOWED_ORIGINS.has(origin);
 
   const httpServer = http.createServer((req, res) => {
-    if (req.method === 'POST' && req.url === '/save') {
-      // Token first: a missing token is 401 regardless of Origin.
-      if (!safeEqual(req.headers['x-wdio-token'], authToken)) {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Unauthorized' }));
-        req.resume();
-        return;
-      }
-      if (!originAllowed(req.headers.origin)) {
-        res.writeHead(403, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Forbidden origin' }));
-        req.resume();
-        return;
-      }
-      let body = '';
-      req.on('data', d => body += d);
-      req.on('end', () => {
-        try {
-          const { code, path: filePath } = JSON.parse(body);
-          if (filePath) {
-            const resolved = path.resolve(filePath);
-            if (!resolved.startsWith(process.cwd() + path.sep) && resolved !== process.cwd()) {
-              res.writeHead(403, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: 'Path outside working directory' }));
-              return;
-            }
-            fs.writeFileSync(resolved, code, 'utf8');
-          }
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true }));
-        } catch (err) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: err.message }));
-        }
-      });
-      return;
-    }
-
     const pathname = new URL(req.url, 'http://localhost').pathname;
     const urlPath = pathname === '/' ? '/index.html' : pathname;
     // path.resolve normalises any "../" segments; reject anything that escapes UI_DIR.
@@ -123,7 +85,7 @@ export function createServer({ port = 9323, browserName = 'chrome', token, onEve
   wss.on('connection', (ws, req) => {
     codewindows.add(ws);
     // Send current state to newly connected code window
-    broadcast({ type: 'init', lines, browserName });
+    broadcast({ type: 'init', lines });
     ws.on('message', (raw) => {
       let msg;
       try { msg = JSON.parse(raw); } catch { return; }
@@ -167,6 +129,8 @@ export function createServer({ port = 9323, browserName = 'chrome', token, onEve
       broadcast({ type: 'mode', mode: 'recording' });
       return;
     }
+
+    if (event.type === 'navigate' && lines.length > 0 && !event.typed) return;
 
     const line = generateLine(event);
     if (!line) return;

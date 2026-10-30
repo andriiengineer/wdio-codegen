@@ -8,7 +8,7 @@ import { createFileWriter } from '../src/file-writer.js';
 import { normalizeUrl } from '../src/normalize-url.js';
 import net from 'node:net';
 import cp from 'node:child_process';
-import { findChromeBin, getScreenSize, openCodeWindow, setCodeWindowDockIcon } from './chrome-setup.js';
+import { getScreenSize, openCodeWindow } from './chrome-setup.js';
 
 let values, positionals;
 try {
@@ -19,8 +19,6 @@ try {
   options: {
     version:            { type: 'boolean', short: 'V' },
     output:             { type: 'string',  short: 'o' },
-    // hidden from --help, kept for backward compatibility
-    browser:            { type: 'string',  short: 'b', default: 'chrome' },
     port:               { type: 'string',  default: '9323' },
     'test-id-attribute': { type: 'string' },
     'save-storage':     { type: 'string' },
@@ -78,11 +76,6 @@ Options:
 
 const rawUrl = positionals[0];
 const targetUrl = normalizeUrl(rawUrl);
-
-if (values.browser && values.browser !== 'chrome') {
-  console.error(`[wdio-codegen] Error: --browser "${values.browser}" is not supported. Only 'chrome' works (recording uses Puppeteer CDP).`);
-  process.exit(1);
-}
 
 // Only http(s) is accepted: the value reaches `cp.spawn(chrome, ['--app=<url>', ...])`
 // and `driver.url(url)`, and `javascript:` / `file:` URLs have no business there.
@@ -199,7 +192,6 @@ async function main() {
   try {
     launcherPromise = createLauncher({
       url: targetUrl,
-      browser: values.browser,
       testIdAttribute: values['test-id-attribute'],
       saveStorage: values['save-storage'],
       loadStorage: values['load-storage'],

@@ -216,6 +216,7 @@ function isUnstableClass(cls) {
 }
 
 // src/recorder-modules/recorder-locator.js
+var TEST_IDS = [.../* @__PURE__ */ new Set([...globalThis.__wdioTestIdAttrs ?? [], ...TEST_ID_ATTRS])];
 var _SKIP_CLASS_RE = /^(active|selected|hover|focus|focused|disabled|hidden|visible|open|closed|loading|error|success|is-|has-|js-|ng-|v-|_)/;
 function _bestCSSSegment(node) {
   const tag = node.tagName.toLowerCase();
@@ -223,12 +224,16 @@ function _bestCSSSegment(node) {
     (c) => c.length > 2 && !_SKIP_CLASS_RE.test(c) && !/^\d/.test(c) && !isUnstableClass(c) && !isWdioImageSelector(`.${c}`)
   );
   if (stableCls.length > 0) return `${tag}.${CSS.escape(stableCls[0])}`;
-  for (const a of TEST_ID_ATTRS) {
+  for (const a of TEST_IDS) {
     const v = node.getAttribute(a);
     if (v) return `[${a}="${cssAttr(v)}"]`;
   }
   const al = node.getAttribute("aria-label");
   if (al) return `${tag}[aria-label="${cssAttr(al)}"]`;
+  return _positionalSegment(node);
+}
+function _positionalSegment(node) {
+  const tag = node.tagName.toLowerCase();
   const parent = node.parentElement;
   if (parent) {
     const sameTag = [...parent.children].filter((c) => c.tagName === node.tagName);
@@ -264,7 +269,7 @@ function _wdioXPath(locator) {
     return ids.length ? [`.//${tag}[${ids.map((id) => `@${attr}="${id}"`).join(" or ")}]`] : [];
   }).join(" | ");
 }
-function _deepMatches(locator) {
+function deepMatches(locator) {
   if (isWdioImageSelector(locator)) return [];
   const xpath = _wdioXPath(locator);
   const hits = [];
@@ -281,14 +286,14 @@ function _deepMatches(locator) {
 }
 function _isUnique(locator) {
   try {
-    return _deepMatches(locator).length === 1;
+    return deepMatches(locator).length === 1;
   } catch {
     return false;
   }
 }
 function _resolvesOnlyTo(locator, el) {
   try {
-    const hits = _deepMatches(locator);
+    const hits = deepMatches(locator);
     return hits.length === 1 && hits[0] === el;
   } catch {
     return false;
@@ -310,13 +315,7 @@ function _buildScopedCSS(anchorSelector, anchorEl, targetEl) {
     `${anchorSelector} ${segs[segs.length - 1]}`
     // just the leaf segment
   ];
-  for (const c of candidates) {
-    try {
-      if (_isUnique(c)) return c;
-    } catch {
-    }
-  }
-  return `${anchorSelector} ${segs.join(" > ")}`;
+  return candidates.find((c) => _resolvesOnlyTo(c, targetEl)) ?? null;
 }
 function buildFallbackSelector(el) {
   const qRoot = _queryRoot(el);
@@ -330,7 +329,7 @@ function buildFallbackSelector(el) {
     if (anchor.id && _isUnique(`#${CSS.escape(anchor.id)}`)) {
       anchorSel = `#${CSS.escape(anchor.id)}`;
     } else {
-      for (const a of TEST_ID_ATTRS) {
+      for (const a of TEST_IDS) {
         const v = anchor.getAttribute(a);
         if (v) {
           anchorSel = `[${a}="${cssAttr(v)}"]`;
@@ -339,19 +338,21 @@ function buildFallbackSelector(el) {
       }
     }
     if (anchorSel) {
-      const css = _buildScopedCSS(anchorSel, anchor, el);
-      if (css) return css;
+      const css2 = _buildScopedCSS(anchorSel, anchor, el);
+      if (css2) return css2;
     }
     anchor = anchor.parentElement;
     depth++;
   }
-  const segs = [];
-  let node = el;
-  while (node && node.nodeType === Node.ELEMENT_NODE && node !== docRoot) {
-    segs.unshift(_bestCSSSegment(node));
-    node = node.parentElement;
-  }
-  return segs.join(" > ");
+  const path = (segment) => {
+    const segs = [];
+    for (let node = el; node && node.nodeType === Node.ELEMENT_NODE && node !== docRoot; node = node.parentElement) {
+      segs.unshift(segment(node));
+    }
+    return segs.join(" > ");
+  };
+  const css = path(_bestCSSSegment);
+  return _resolvesOnlyTo(css, el) ? css : path(_positionalSegment);
 }
 function extractInfo(el) {
   const tag = el.tagName.toLowerCase();
@@ -370,7 +371,7 @@ function extractInfo(el) {
   const id = el.id || "";
   const idUnique = id ? _isUnique(`[id="${cssAttr(id)}"]`) : false;
   const attrs = {};
-  for (const attr of [...TEST_ID_ATTRS, "type", "name", "role", "href", "placeholder", "value"])
+  for (const attr of [...TEST_IDS, "type", "name", "role", "href", "placeholder", "value"])
     if (el.hasAttribute(attr)) attrs[attr] = el.getAttribute(attr);
   if (tag === "img") attrs.alt = el.getAttribute("alt") || "";
   if (attrs.href) {
@@ -402,7 +403,7 @@ function getUniqueLocator(el, info) {
   _roots = _searchRoots();
   try {
     info ??= extractInfo(el);
-    const candidates = getLocatorCandidates(info);
+    const candidates = getLocatorCandidates(info, TEST_IDS);
     const stable = candidates.filter((c) => !c.warn);
     for (const { locator } of stable) {
       if (_resolvesOnlyTo(locator, el)) return { locator, warn: false };
@@ -437,7 +438,7 @@ function _narrow(locator, el) {
     if (ancestor.id && _isUnique(`#${CSS.escape(ancestor.id)}`)) {
       ancLoc = `#${CSS.escape(ancestor.id)}`;
     } else {
-      for (const attr of TEST_ID_ATTRS) {
+      for (const attr of TEST_IDS) {
         const val = ancestor.getAttribute(attr);
         if (val) {
           ancLoc = `[${attr}="${cssAttr(val)}"]`;
@@ -503,13 +504,13 @@ function resolveTextAssertLocator(el, locator, warn, text) {
 function attachDialogOverrides(send) {
   const _origAlert = window.alert;
   window.alert = function(msg) {
-    send({ type: "dialog:alert", message: String(msg ?? ""), _warn: true });
+    send({ type: "dialog:alert", message: String(msg ?? "") });
     return _origAlert.call(this, msg);
   };
   const _origConfirm = window.confirm;
   window.confirm = function(msg) {
     const result = _origConfirm.call(this, msg);
-    send({ type: result ? "dialog:accept" : "dialog:dismiss", message: String(msg ?? ""), _warn: true });
+    send({ type: result ? "dialog:accept" : "dialog:dismiss", message: String(msg ?? "") });
     return result;
   };
   const _origPrompt = window.prompt;
@@ -519,7 +520,7 @@ function attachDialogOverrides(send) {
     if (result !== null) {
       send({ type: "dialog:prompt", message: String(msg ?? ""), value: result });
     } else {
-      send({ type: "dialog:dismiss", message: String(msg ?? ""), _warn: false });
+      send({ type: "dialog:dismiss", message: String(msg ?? "") });
     }
     return result;
   };
@@ -531,12 +532,12 @@ function attachSPANavigation(send, flushInput, flushClick) {
     flushInput();
     flushClick();
     _origPushState(...args);
-    window.__wdioRecord?.(JSON.stringify({ type: "navigate", url: location.href }));
+    window.__wdioRecord?.(JSON.stringify({ type: "navigate", url: location.href, spa: true }));
   };
   window.addEventListener("popstate", () => {
     flushInput();
     flushClick();
-    window.__wdioRecord?.(JSON.stringify({ type: "navigate", url: location.href }));
+    window.__wdioRecord?.(JSON.stringify({ type: "navigate", url: location.href, spa: true }));
   });
 }
 
@@ -637,8 +638,17 @@ function createToolbar({ onPause, onResume, onClear, onPick, onAssertMode }) {
   clearBtn.type = "button";
   clearBtn.style.cssText = _btnStyle("transparent", "#e2e8f0");
   clearBtn.textContent = "\u2715";
+  clearBtn.title = "Clear recording";
   clearBtn.onclick = (e) => {
     e.stopPropagation();
+    if (clearBtn.textContent === "\u2715") {
+      clearBtn.textContent = "Clear?";
+      setTimeout(() => {
+        clearBtn.textContent = "\u2715";
+      }, 2e3);
+      return;
+    }
+    clearBtn.textContent = "\u2715";
     onClear();
   };
   toolbar.appendChild(clearBtn);
@@ -647,7 +657,7 @@ function createToolbar({ onPause, onResume, onClear, onPick, onAssertMode }) {
   hoverLocator.style.cssText = [
     "font:10px monospace",
     "color:#38bdf8",
-    "max-width:280px",
+    "width:280px",
     "overflow:hidden",
     "text-overflow:ellipsis",
     "white-space:nowrap",
@@ -793,7 +803,7 @@ function createHighlight() {
       this.clearQuery();
       let elements;
       try {
-        elements = [...document.querySelectorAll(selector)];
+        elements = deepMatches(selector);
       } catch {
         return;
       }
@@ -846,6 +856,7 @@ function showContextMenu({
   locator,
   warn,
   text,
+  textLoc,
   isFormEl,
   isCheckable,
   currentValue,
@@ -873,15 +884,15 @@ function showContextMenu({
     ["Element is NOT visible", () => send({ type: "assert:not:toBeDisplayed", locator, _warn: warn })],
     ["Text equals\u2026", () => {
       _removeMenu();
-      showTextAssertForm2({ locator, text, warn, eventType: "assert:toHaveText" });
+      showTextAssertForm2({ ...textLoc, text, eventType: "assert:toHaveText" });
     }],
     ["Text contains\u2026", () => {
       _removeMenu();
-      showTextAssertForm2({ locator, text, warn, eventType: "assert:toHaveTextContaining" });
+      showTextAssertForm2({ ...textLoc, text, eventType: "assert:toHaveTextContaining" });
     }],
     ["Text is NOT\u2026", () => {
       _removeMenu();
-      showTextAssertForm2({ locator, text, warn, eventType: "assert:not:toHaveText" });
+      showTextAssertForm2({ ...textLoc, text, eventType: "assert:not:toHaveText" });
     }],
     ...isFormEl ? [
       ["Value equals\u2026", () => {
@@ -933,6 +944,8 @@ function showContextMenu({
   footer.appendChild(titleBtn);
   menu.appendChild(footer);
   document.body.appendChild(menu);
+  menu.style.top = `${Math.max(0, Math.min(y, innerHeight - menu.offsetHeight))}px`;
+  menu.style.left = `${Math.max(0, Math.min(x, innerWidth - menu.offsetWidth))}px`;
   document.addEventListener("click", _removeMenu, { once: true });
 }
 
@@ -1010,8 +1023,8 @@ function showTextAssertForm({ locator, text, warn, eventType, title, send }) {
   locLabel.style.cssText = "font-size:11px;color:#64748b;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
   locLabel.textContent = locator;
   overlay.appendChild(locLabel);
-  const inp = document.createElement("input");
-  inp.type = "text";
+  const inp = document.createElement("textarea");
+  inp.rows = Math.min(text.split("\n").length, 5);
   inp.placeholder = "Expected text\u2026";
   inp.style.cssText = [
     "background:#0f172a",
@@ -1022,10 +1035,10 @@ function showTextAssertForm({ locator, text, warn, eventType, title, send }) {
     "padding:7px 10px",
     "outline:none",
     "width:100%",
-    "box-sizing:border-box"
+    "box-sizing:border-box",
+    "resize:vertical"
   ].join(";");
   inp.value = text;
-  inp.addEventListener("keydown", (e) => e.stopPropagation(), true);
   inp.addEventListener("focus", () => {
     inp.style.borderColor = "#60a5fa";
   });
@@ -1043,7 +1056,8 @@ function showTextAssertForm({ locator, text, warn, eventType, title, send }) {
     overlay.remove();
   };
   inp.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
+    e.stopPropagation();
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       ok.click();
     }
@@ -1051,7 +1065,7 @@ function showTextAssertForm({ locator, text, warn, eventType, title, send }) {
       e.preventDefault();
       overlay.remove();
     }
-  });
+  }, true);
   btnRow.appendChild(cancel);
   btnRow.appendChild(ok);
   overlay.appendChild(btnRow);
@@ -1090,7 +1104,7 @@ function showAttrAssertForm({ locator, warn, send }) {
         e.preventDefault();
         overlay.remove();
       }
-    });
+    }, true);
   });
   btnRow.appendChild(cancel);
   btnRow.appendChild(ok);
@@ -1110,6 +1124,7 @@ function _isRecordableInput(el) {
 function targetOf(e) {
   return e.composedPath().find((n) => n instanceof Element) ?? e.target;
 }
+var CARET_KEYS = ["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Home", "End"];
 var CLICKABLE = 'button, a, [role="button"], input[type="submit"], input[type="button"]';
 function clickTargetOf(e) {
   const start = targetOf(e);
@@ -1133,11 +1148,12 @@ function attachEventListeners({
   getInputBuf,
   setInputBuf,
   getFocusValues,
-  setClickBuf,
+  bufferClick,
   resolveTextAssertLocator: resolveTextAssertLocator2
 }) {
   let hoverTimer = null;
   let dragSourceEl = null;
+  let labelControl = null;
   function clickLocator(el) {
     const own = getUniqueLocator2(el);
     const r = el.getBoundingClientRect();
@@ -1153,8 +1169,9 @@ function attachEventListeners({
   }
   document.addEventListener("click", (e) => {
     const el = clickTargetOf(e);
-    if (!el || el === document.body) return;
+    if (!el || el === document.body || el === document.documentElement) return;
     if (el.closest('[id^="__wdio_"]')) return;
+    if (el !== labelControl) labelControl = null;
     if (el.tagName === "INPUT" && (el.type === "checkbox" || el.type === "radio") && el.getRootNode() === document) return;
     if (getPickMode()) {
       const { locator: locator2, warn: warn2 } = getUniqueLocator2(el);
@@ -1196,16 +1213,11 @@ function attachEventListeners({
       send({ type: "download", locator: locator2, filename, _warn: warn2 });
       return;
     }
+    if (el.tagName === "LABEL" && ["checkbox", "radio"].includes(el.control?.type)) labelControl = el.control;
     const { locator, warn } = clickLocator(el);
     const payload = { type: "click", locator, _warn: warn };
-    onCancelClick();
-    setClickBuf({
-      payload,
-      timer: setTimeout(() => {
-        setClickBuf(null);
-        send(payload);
-      }, 300)
-    });
+    if (el.closest("a[href]") || el.form && el.type === "submit") send(payload);
+    else bufferClick(payload);
   }, true);
   document.addEventListener("dblclick", (e) => {
     if (targetOf(e).closest('[id^="__wdio_"]')) return;
@@ -1218,6 +1230,10 @@ function attachEventListeners({
   document.addEventListener("change", (e) => {
     const el = targetOf(e);
     if (el.closest('[id^="__wdio_"]')) return;
+    if (el === labelControl) {
+      labelControl = null;
+      return;
+    }
     if (el.tagName === "SELECT") {
       const { locator, warn } = getUniqueLocator2(el);
       const opt = el.options[el.selectedIndex];
@@ -1274,9 +1290,10 @@ function attachEventListeners({
     if (isCombo) {
       onFlushInput();
       const keys = [];
-      if (e.ctrlKey) keys.push("Control");
+      if (isMac ? e.metaKey : e.ctrlKey) keys.push("Ctrl");
+      if (isMac && e.ctrlKey) keys.push("Control");
       if (e.altKey) keys.push("Alt");
-      if (e.metaKey) keys.push("Meta");
+      if (!isMac && e.metaKey) keys.push("Meta");
       if (hasShift) keys.push("Shift");
       keys.push(e.key);
       send({ type: "keys", keys });
@@ -1309,6 +1326,8 @@ function attachEventListeners({
       "F11",
       "F12"
     ];
+    const t = targetOf(e);
+    if (CARET_KEYS.includes(e.key) && _isRecordableInput(t) && (t.isContentEditable ? t.innerText.trim() : t.value)) return;
     if (SPECIAL.includes(e.key)) {
       if (["Tab", "Enter", "Escape"].includes(e.key)) onFlushInput();
       send({ type: "keys", key: e.key });
@@ -1368,7 +1387,8 @@ function attachEventListeners({
     e.preventDefault();
     const el = targetOf(e);
     const { locator, warn } = getUniqueLocator2(el);
-    const text = (el.innerText || "").trim().split("\n")[0].trim().slice(0, 60);
+    const text = (el.innerText || "").trim();
+    const textLoc = resolveTextAssertLocator2(el, locator, warn, text);
     const isCheckable = el.type === "checkbox" || el.type === "radio";
     const isFormEl = ["INPUT", "SELECT", "TEXTAREA"].includes(el.tagName);
     const currentValue = isFormEl ? el.value ?? "" : "";
@@ -1378,6 +1398,7 @@ function attachEventListeners({
       locator,
       warn,
       text,
+      textLoc,
       isFormEl,
       isCheckable,
       currentValue,
@@ -1402,9 +1423,15 @@ function attachEventListeners({
   let _clickBuf = null;
   function _flushClick() {
     if (!_clickBuf) return;
-    clearTimeout(_clickBuf.timer);
-    send(_clickBuf.payload);
+    const { payload, timer } = _clickBuf;
     _clickBuf = null;
+    clearTimeout(timer);
+    send(payload);
+  }
+  function _bufferClick(payload) {
+    if (_clickBuf?.payload.locator === payload.locator) _cancelClick();
+    else _flushClick();
+    _clickBuf = { payload, timer: setTimeout(_flushClick, 300) };
   }
   function _cancelClick() {
     if (!_clickBuf) return;
@@ -1461,12 +1488,15 @@ function attachEventListeners({
       setAssertMode(null);
     }
     if (cmd === "recording") {
+      paused = false;
       setAssertMode(null);
       setPick(false);
+      syncPauseButton();
     }
   };
   function send(event) {
     if (paused) return;
+    if (!event.type.startsWith("dialog:")) _flushClick();
     if (event.type !== "navigate") {
       stepCount++;
       updateToolbarCounter();
@@ -1545,9 +1575,7 @@ function attachEventListeners({
       _inputBuf = v;
     },
     getFocusValues: () => focusValues,
-    setClickBuf: (v) => {
-      _clickBuf = v;
-    },
+    bufferClick: _bufferClick,
     resolveTextAssertLocator
   });
   if (window === window.top && /^https?:/.test(location.href)) {

@@ -86,9 +86,14 @@ describe('generateLine', () => {
         .toBe(`    await browser.keys('Enter');`);
     });
 
-    it('Ctrl+A combination', () => {
-      expect(generateLine({ type: 'keys', keys: ['Control', 'a'] }))
+    it('primary modifier (Cmd on Mac, Ctrl elsewhere) becomes cross-platform Key.Ctrl', () => {
+      expect(generateLine({ type: 'keys', keys: ['Ctrl', 'a'] }))
         .toBe(`    await browser.keys([Key.Ctrl, 'a']);`);
+    });
+
+    it('physical Control on Mac stays Key.Control', () => {
+      expect(generateLine({ type: 'keys', keys: ['Control', 'a'] }))
+        .toBe(`    await browser.keys([Key.Control, 'a']);`);
     });
 
     it('Meta+K combination (Cmd+K on Mac)', () => {
@@ -102,7 +107,7 @@ describe('generateLine', () => {
     });
 
     it('Ctrl+Shift+Z (redo)', () => {
-      expect(generateLine({ type: 'keys', keys: ['Control', 'Shift', 'z'] }))
+      expect(generateLine({ type: 'keys', keys: ['Ctrl', 'Shift', 'z'] }))
         .toBe(`    await browser.keys([Key.Ctrl, Key.Shift, 'z']);`);
     });
 
@@ -164,29 +169,25 @@ describe('generateLine', () => {
       .toBe(`    await expect(browser).toHaveTitle('Dashboard');`);
   });
 
-  it('dialog:alert generates acceptAlert', () => {
-    expect(generateLine({ type: 'dialog:alert', message: 'Are you sure?', _warn: true }))
-      .toBe(`    await browser.acceptAlert();`);
+  const handler = (answer) => [
+    `    browser.on('dialog', function onDialog(dialog) {`,
+    `      browser.off('dialog', onDialog);`,
+    `      return ${answer};`,
+    `    });`,
+  ].join('\n');
+
+  it('dialog:alert and dialog:accept register a one-shot accept handler', () => {
+    expect(generateLine({ type: 'dialog:alert', message: 'Hi' })).toBe(handler('dialog.accept()'));
+    expect(generateLine({ type: 'dialog:accept', message: 'Sure?' })).toBe(handler('dialog.accept()'));
   });
 
-  it('dialog:accept generates acceptAlert', () => {
-    expect(generateLine({ type: 'dialog:accept', message: 'Confirm?', _warn: true }))
-      .toBe(`    await browser.acceptAlert();`);
+  it('dialog:dismiss registers a one-shot dismiss handler', () => {
+    expect(generateLine({ type: 'dialog:dismiss', message: 'Sure?' })).toBe(handler('dialog.dismiss()'));
   });
 
-  it('dialog:dismiss generates dismissAlert', () => {
-    expect(generateLine({ type: 'dialog:dismiss', message: 'Confirm?', _warn: true }))
-      .toBe(`    await browser.dismissAlert();`);
-  });
-
-  it('dialog:prompt generates sendAlertText and acceptAlert', () => {
-    expect(generateLine({ type: 'dialog:prompt', message: 'Enter name:', value: 'Alice', _warn: true }))
-      .toBe(`    await browser.sendAlertText('Alice');\n    await browser.acceptAlert();`);
-  });
-
-  it('dialog:prompt escapes single quotes in value', () => {
-    expect(generateLine({ type: 'dialog:prompt', message: 'Enter:', value: "O'Brien", _warn: true }))
-      .toBe(`    await browser.sendAlertText('O\\'Brien');\n    await browser.acceptAlert();`);
+  it('dialog:prompt accepts with the escaped text', () => {
+    expect(generateLine({ type: 'dialog:prompt', message: 'Enter:', value: "O'Brien" }))
+      .toBe(handler(`dialog.accept('O\\'Brien')`));
   });
 
   describe('uploadFile', () => {

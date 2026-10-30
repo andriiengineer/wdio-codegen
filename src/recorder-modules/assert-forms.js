@@ -82,8 +82,8 @@ export function showTextAssertForm({ locator, text, warn, eventType, title, send
   locLabel.textContent = locator;
   overlay.appendChild(locLabel);
 
-  const inp = document.createElement('input');
-  inp.type = 'text';
+  const inp = document.createElement('textarea');
+  inp.rows = Math.min(text.split('\n').length, 5);
   inp.placeholder = 'Expected text…';
   inp.style.cssText = [
     'background:#0f172a',
@@ -95,9 +95,9 @@ export function showTextAssertForm({ locator, text, warn, eventType, title, send
     'outline:none',
     'width:100%',
     'box-sizing:border-box',
+    'resize:vertical',
   ].join(';');
   inp.value = text;
-  inp.addEventListener('keydown', e => e.stopPropagation(), true);
   inp.addEventListener('focus', () => { inp.style.borderColor = '#60a5fa'; });
   inp.addEventListener('blur',  () => { inp.style.borderColor = '#3b82f6'; });
   overlay.appendChild(inp);
@@ -115,9 +115,10 @@ export function showTextAssertForm({ locator, text, warn, eventType, title, send
   };
 
   inp.addEventListener('keydown', e => {
-    if (e.key === 'Enter')  { e.preventDefault(); ok.click(); }
+    e.stopPropagation();
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ok.click(); }
     if (e.key === 'Escape') { e.preventDefault(); overlay.remove(); }
-  });
+  }, true);
 
   btnRow.appendChild(cancel);
   btnRow.appendChild(ok);
@@ -164,7 +165,7 @@ export function showAttrAssertForm({ locator, warn, send }) {
     inp.addEventListener('keydown', e => {
       if (e.key === 'Enter')  { e.preventDefault(); ok.click(); }
       if (e.key === 'Escape') { e.preventDefault(); overlay.remove(); }
-    });
+    }, true);
   });
 
   btnRow.appendChild(cancel);

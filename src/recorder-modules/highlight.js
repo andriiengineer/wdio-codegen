@@ -1,4 +1,5 @@
 // src/recorder-modules/highlight.js
+import { deepMatches } from './recorder-locator.js';
 
 /**
  * Creates hover highlight (blue border following cursor) and query highlight
@@ -69,7 +70,7 @@ export function createHighlight() {
     showQuery(selector) {
       this.clearQuery();
       let elements;
-      try { elements = [...document.querySelectorAll(selector)]; } catch { return; }
+      try { elements = deepMatches(selector); } catch { return; }
       elements.slice(0, 50).forEach(el => {
         const rect = el.getBoundingClientRect();
         const div = document.createElement('div');

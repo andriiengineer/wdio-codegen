@@ -30,9 +30,16 @@ import { attachEventListeners } from './recorder-modules/event-listeners.js';
 
   function _flushClick() {
     if (!_clickBuf) return;
-    clearTimeout(_clickBuf.timer);
-    send(_clickBuf.payload);
+    const { payload, timer } = _clickBuf;
     _clickBuf = null;
+    clearTimeout(timer);
+    send(payload);
+  }
+
+  function _bufferClick(payload) {
+    if (_clickBuf?.payload.locator === payload.locator) _cancelClick();
+    else _flushClick();
+    _clickBuf = { payload, timer: setTimeout(_flushClick, 300) };
   }
 
   function _cancelClick() {
@@ -81,11 +88,12 @@ import { attachEventListeners } from './recorder-modules/event-listeners.js';
     if (cmd === 'assertVisible') { setAssertMode('visible'); setPick(false); }
     if (cmd === 'assertValue')   { setAssertMode('value');   setPick(false); }
     if (cmd === 'pick')          { setPick(!pickMode); setAssertMode(null); }
-    if (cmd === 'recording')     { setAssertMode(null); setPick(false); }
+    if (cmd === 'recording')     { paused = false; setAssertMode(null); setPick(false); syncPauseButton(); }
   };
 
   function send(event) {
     if (paused) return;
+    if (!event.type.startsWith('dialog:')) _flushClick();
     if (event.type !== 'navigate') {
       stepCount++;
       updateToolbarCounter();
@@ -167,7 +175,7 @@ import { attachEventListeners } from './recorder-modules/event-listeners.js';
     getInputBuf:   () => _inputBuf,
     setInputBuf:   (v) => { _inputBuf = v; },
     getFocusValues: () => focusValues,
-    setClickBuf:   (v) => { _clickBuf = v; },
+    bufferClick:   _bufferClick,
     resolveTextAssertLocator,
   });
 

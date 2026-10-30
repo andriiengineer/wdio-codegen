@@ -6,7 +6,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const APP_SRC = fs.readFileSync(path.join(__dirname, '../../ui-src/App.tsx'), 'utf8');
 const TOOLBAR_SRC = fs.readFileSync(path.join(__dirname, '../../ui-src/components/Toolbar.tsx'), 'utf8');
 
 let portSeq = 9400;
@@ -95,79 +94,10 @@ describe('multi-line events become one entry per line', () => {
 });
 
 // ── browserName in init WS message ───────────────────────────────────────────
-describe('server sends browserName in init message', () => {
-  it('init message includes browserName when explicitly set', async () => {
-    const port = nextPort();
-    const srv = createServer({ port, browserName: 'firefox' });
-    await srv.start();
-    const ws = connect(port, srv.token);
-    const messages = [];
-    ws.on('message', d => messages.push(JSON.parse(d.toString())));
-    await new Promise(r => ws.on('open', r));
-    await new Promise(r => setTimeout(r, 30));
-    const init = messages.find(m => m.type === 'init');
-    ws.close();
-    await srv.stop();
-    expect(init.browserName).toBe('firefox');
-  });
-
-  it('init message defaults browserName to "chrome" when not provided', async () => {
-    const port = nextPort();
-    const srv = createServer({ port });
-    await srv.start();
-    const ws = connect(port, srv.token);
-    const messages = [];
-    ws.on('message', d => messages.push(JSON.parse(d.toString())));
-    await new Promise(r => ws.on('open', r));
-    await new Promise(r => setTimeout(r, 30));
-    const init = messages.find(m => m.type === 'init');
-    ws.close();
-    await srv.stop();
-    expect(init.browserName).toBe('chrome');
-  });
-
-  it('App.tsx does not hardcode "Chrome", uses dynamic browser name from state', () => {
-    expect(APP_SRC).not.toContain('<span>Chrome</span>');
-    expect(APP_SRC).toContain('browserName');
-  });
-});
-
-// ── Save button in Toolbar ────────────────────────────────────────────────────
-describe('Toolbar has Save button wired to /save endpoint', () => {
-  it('Toolbar.tsx has onSave prop', () => {
-    expect(TOOLBAR_SRC).toContain('onSave');
-  });
-
-  it('Toolbar.tsx renders a Save button', () => {
-    expect(TOOLBAR_SRC).toContain('Save');
-    // The button must call onSave
-    expect(TOOLBAR_SRC).toContain('onClick={() => onSave()');
-  });
-
-  it('App.tsx implements handleSave that POSTs to /save', () => {
-    expect(APP_SRC).toContain('handleSave');
-    expect(APP_SRC).toContain('/save');
-    expect(APP_SRC).toContain('fetch');
-  });
-
-  it('Save button is disabled when no code recorded (hasCode guard)', () => {
-    // Toolbar must pass disabled={!hasCode} to Save button (same as Copy/Clear)
-    expect(TOOLBAR_SRC).toMatch(/Save[\s\S]{0,200}disabled/);
-  });
-});
-
-// ── The local transport is authenticated ─────────────────────────────────────
-// Loopback is not a trust boundary: any local page can POST here, and WebSocket is not
-// covered by the same-origin policy.
+// Loopback is not a trust boundary: WebSocket is not covered by the same-origin policy.
 describe('transport authentication', () => {
   let srv;
   let PORT, ORIGIN;
-
-  const save = (headers, body) => fetch(`http://localhost:${PORT}/save`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify(body),
-  });
 
   /** Resolves to 'open' or 'rejected'; never hangs. */
   const tryConnect = (url, opts) => new Promise((resolve) => {
@@ -176,17 +106,14 @@ describe('transport authentication', () => {
     ws.on('error', () => resolve('rejected'));
   });
 
-  let outFile;
   beforeEach(async () => {
     PORT = nextPort();
     ORIGIN = `http://localhost:${PORT}`;
     srv = createServer({ port: PORT });
     await srv.start();
-    outFile = path.join(process.cwd(), `h4-test-${Date.now()}.txt`);
   });
   afterEach(async () => {
     await srv?.stop();
-    if (outFile && fs.existsSync(outFile)) fs.unlinkSync(outFile);
   });
 
   it('issues a token that is not guessable', () => {
@@ -197,40 +124,6 @@ describe('transport authentication', () => {
     const s = createServer({ port: nextPort(), token: 'fixed-token' });
     expect(s.token).toBe('fixed-token');
     await s.stop();
-  });
-
-  // ── POST /save ──
-  it('rejects /save without a token and writes nothing', async () => {
-    const res = await save({ Origin: ORIGIN }, { code: 'x', path: outFile });
-    expect(res.status).toBe(401);
-    expect(fs.existsSync(outFile)).toBe(false);
-  });
-
-  it('rejects /save with a wrong token and writes nothing', async () => {
-    const res = await save({ Origin: ORIGIN, 'X-Wdio-Token': 'a'.repeat(64) },
-      { code: 'x', path: outFile });
-    expect(res.status).toBe(401);
-    expect(fs.existsSync(outFile)).toBe(false);
-  });
-
-  it('rejects /save from a foreign origin even with a valid token', async () => {
-    const res = await save({ Origin: 'http://evil.example', 'X-Wdio-Token': srv.token },
-      { code: 'x', path: outFile });
-    expect(res.status).toBe(403);
-    expect(fs.existsSync(outFile)).toBe(false);
-  });
-
-  it('rejects /save with no Origin at all (non-browser client)', async () => {
-    const res = await save({ 'X-Wdio-Token': srv.token }, { code: 'x', path: outFile });
-    expect(res.status).toBe(403);
-    expect(fs.existsSync(outFile)).toBe(false);
-  });
-
-  it('accepts /save with a valid token and allowed origin', async () => {
-    const res = await save({ Origin: ORIGIN, 'X-Wdio-Token': srv.token },
-      { code: 'saved', path: outFile });
-    expect(res.status).toBe(200);
-    expect(fs.readFileSync(outFile, 'utf8')).toBe('saved');
   });
 
   // ── WebSocket upgrade ──
@@ -262,11 +155,10 @@ describe('transport authentication', () => {
   });
 
   // ── UI plumbing: the token must reach both channels, or the tool talks to nothing ──
-  it('the UI sends the token on both channels', () => {
+  it('the UI sends the token on the WS channel', () => {
     const MAIN_SRC = fs.readFileSync(path.join(__dirname, '../../ui-src/main.tsx'), 'utf8');
     const WS_SRC = fs.readFileSync(path.join(__dirname, '../../ui-src/hooks/useWS.ts'), 'utf8');
     expect(MAIN_SRC).toContain("params.get('token')");
-    expect(APP_SRC).toContain('X-Wdio-Token');
     expect(WS_SRC).toContain('token=');
   });
 
@@ -327,7 +219,6 @@ describe('end-to-end token wiring', () => {
     const bundlePath = path.join(__dirname, '../../ui/assets', asset);
     expect(fs.existsSync(bundlePath), `${asset} referenced but missing on disk`).toBe(true);
     const bundle = fs.readFileSync(bundlePath, 'utf8');
-    expect(bundle).toContain('X-Wdio-Token');
     expect(bundle).toContain('token=');
   });
 });

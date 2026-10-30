@@ -4,6 +4,8 @@
 import { getLocatorCandidates, TEST_ID_ATTRS, cssAttr, wdioXPathBranches, isWdioImageSelector } from '../locator-engine.js';
 import { isUnstableClass } from '../class-filter.js';
 
+const TEST_IDS = [...new Set([...(globalThis.__wdioTestIdAttrs ?? []), ...TEST_ID_ATTRS])];
+
 // State/utility class prefixes that change dynamically and must not be used as stable locators.
 // Used in both _bestCSSSegment (CSS path builder) and getUniqueLocator (class scoring).
 const _SKIP_CLASS_RE = /^(active|selected|hover|focus|focused|disabled|hidden|visible|open|closed|loading|error|success|is-|has-|js-|ng-|v-|_)/;
@@ -17,12 +19,17 @@ function _bestCSSSegment(node) {
     c.length > 2 && !_SKIP_CLASS_RE.test(c) && !/^\d/.test(c) && !isUnstableClass(c) && !isWdioImageSelector(`.${c}`)
   );
   if (stableCls.length > 0) return `${tag}.${CSS.escape(stableCls[0])}`;
-  for (const a of TEST_ID_ATTRS) {
+  for (const a of TEST_IDS) {
     const v = node.getAttribute(a);
     if (v) return `[${a}="${cssAttr(v)}"]`;
   }
   const al = node.getAttribute('aria-label');
   if (al) return `${tag}[aria-label="${cssAttr(al)}"]`;
+  return _positionalSegment(node);
+}
+
+function _positionalSegment(node) {
+  const tag = node.tagName.toLowerCase();
   const parent = node.parentElement;
   if (parent) {
     const sameTag = [...parent.children].filter(c => c.tagName === node.tagName);
@@ -68,7 +75,7 @@ function _wdioXPath(locator) {
 }
 
 // Everything WebdriverIO would match. XPath cannot run inside a ShadowRoot, so aria/ and text only see the light DOM.
-function _deepMatches(locator) {
+export function deepMatches(locator) {
   if (isWdioImageSelector(locator)) return [];
   const xpath = _wdioXPath(locator);
   const hits = [];
@@ -82,12 +89,12 @@ function _deepMatches(locator) {
 }
 
 function _isUnique(locator) {
-  try { return _deepMatches(locator).length === 1; } catch { return false; }
+  try { return deepMatches(locator).length === 1; } catch { return false; }
 }
 
 function _resolvesOnlyTo(locator, el) {
   try {
-    const hits = _deepMatches(locator);
+    const hits = deepMatches(locator);
     return hits.length === 1 && hits[0] === el;
   } catch {
     return false;
@@ -110,13 +117,7 @@ function _buildScopedCSS(anchorSelector, anchorEl, targetEl) {
     `${anchorSelector} ${segs.slice(-2).join(' > ')}`, // last 2 segments
     `${anchorSelector} ${segs[segs.length - 1]}`,      // just the leaf segment
   ];
-  for (const c of candidates) {
-    try {
-      if (_isUnique(c)) return c;
-    } catch {}
-  }
-  // Uniqueness failed: return the most specific CSS anyway (warn=true will be set by caller)
-  return `${anchorSelector} ${segs.join(' > ')}`;
+  return candidates.find(c => _resolvesOnlyTo(c, targetEl)) ?? null;
 }
 
 function buildFallbackSelector(el) {
@@ -135,7 +136,7 @@ function buildFallbackSelector(el) {
     if (anchor.id && _isUnique(`#${CSS.escape(anchor.id)}`)) {
       anchorSel = `#${CSS.escape(anchor.id)}`;
     } else {
-      for (const a of TEST_ID_ATTRS) {
+      for (const a of TEST_IDS) {
         const v = anchor.getAttribute(a);
         if (v) { anchorSel = `[${a}="${cssAttr(v)}"]`; break; }
       }
@@ -149,13 +150,15 @@ function buildFallbackSelector(el) {
   }
 
   // Full CSS path with :nth-child, the last resort when no stable anchor is found.
-  const segs = [];
-  let node = el;
-  while (node && node.nodeType === Node.ELEMENT_NODE && node !== docRoot) {
-    segs.unshift(_bestCSSSegment(node));
-    node = node.parentElement;
-  }
-  return segs.join(' > ');
+  const path = (segment) => {
+    const segs = [];
+    for (let node = el; node && node.nodeType === Node.ELEMENT_NODE && node !== docRoot; node = node.parentElement) {
+      segs.unshift(segment(node));
+    }
+    return segs.join(' > ');
+  };
+  const css = path(_bestCSSSegment);
+  return _resolvesOnlyTo(css, el) ? css : path(_positionalSegment);
 }
 
 function extractInfo(el) {
@@ -181,7 +184,7 @@ function extractInfo(el) {
   const id = el.id || '';
   const idUnique = id ? _isUnique(`[id="${cssAttr(id)}"]`) : false;
   const attrs = {};
-  for (const attr of [...TEST_ID_ATTRS, 'type', 'name', 'role', 'href', 'placeholder', 'value'])
+  for (const attr of [...TEST_IDS, 'type', 'name', 'role', 'href', 'placeholder', 'value'])
     if (el.hasAttribute(attr)) attrs[attr] = el.getAttribute(attr);
 
   if (tag === 'img') attrs.alt = el.getAttribute('alt') || '';
@@ -222,7 +225,7 @@ function getUniqueLocator(el, info) {
   _roots = _searchRoots();
   try {
     info ??= extractInfo(el);
-    const candidates = getLocatorCandidates(info);
+    const candidates = getLocatorCandidates(info, TEST_IDS);
     const stable = candidates.filter(c => !c.warn);
     for (const { locator } of stable) {
       if (_resolvesOnlyTo(locator, el)) return { locator, warn: false };
@@ -265,7 +268,7 @@ function _narrow(locator, el) {
     if (ancestor.id && _isUnique(`#${CSS.escape(ancestor.id)}`)) {
       ancLoc = `#${CSS.escape(ancestor.id)}`;
     } else {
-      for (const attr of TEST_ID_ATTRS) {
+      for (const attr of TEST_IDS) {
         const val = ancestor.getAttribute(attr);
         if (val) { ancLoc = `[${attr}="${cssAttr(val)}"]`; break; }
       }
